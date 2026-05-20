@@ -261,12 +261,12 @@ Two verification levels — every merged submission has at least the first:
 
 | Level | What's checked | Cost |
 |---|---|---|
-| `scoring` | Maintainer re-runs `speech-spoof-bench reproduce --scoring` on the submitted `scores.txt`. Computes EER from it. Must match the YAML's `scores.eer_percent` exactly (within 1e-6). | Seconds. No audio, no GPU. |
+| `scoring` | Maintainer runs `speech-spoof-bench reproduce --scoring`, which fetches the `scores.txt` from the submission's `scores_url`, verifies `scores_sha256`, and recomputes EER. Must match the YAML's `scores.eer_percent` exactly (within 1e-6). | Seconds. No audio, no GPU. |
 | `inference` | Maintainer re-runs the full pipeline (`speech-spoof-bench reproduce --inference`): downloads the system's checkpoint, runs it on the dataset, regenerates `scores.txt`, recomputes EER. Must match within 0.05% EER. | Expensive. Per-system, per-dataset. |
 
 Workflow:
-1. Submitter opens an HF PR with `<slug>.yaml` + `scores/<slug>.txt`.
-2. Maintainer runs `speech-spoof-bench reproduce --scoring <PR-branch>` — fast, cheap. If it fails, comment + reject.
+1. Submitter uploads `scores.txt` to their own HF model repo (per §1.6), then opens an HF PR on the dataset repo with only `submissions/<slug>.yaml` (the YAML carries `scores_url` + `scores_sha256`).
+2. Maintainer runs `speech-spoof-bench reproduce --scoring <PR-branch>` — fetches `scores_url`, verifies sha, recomputes EER. Fast, cheap. If it fails, comment + reject.
 3. If passes, maintainer writes the `reproduction:` block (level = `scoring`) and merges.
 4. Later, the maintainer can run `--inference` on selected submissions and upgrade the level in a follow-up PR.
 
@@ -389,7 +389,7 @@ def run(
 4. Iterate rows → `model.score_batch` → write `scores.txt`.
 5. `model.unload()`.
 6. For each metric id listed in the dataset's `eval.yaml`: look up in registry (§2.6), call it.
-7. Emit `result.yaml` (= submission template, missing `reproduction:` block).
+7. Emit `result.yaml` — a partially-filled v4 submission template: all metric values, `scores_sha256` (computed from the local `scores.txt`), `bench_version`, and `dataset.revision` are populated. `artifact.scores_url`, the `reproduction:` block, and the `submitter:` block stay empty — the submitter fills them in after uploading the scores file to their model repo (§1.6). Phase 7's `submit` command automates that last mile.
 8. If `cleanup=True`: purge HF cache for that dataset.
 
 Resumability: if `result.yaml` exists and its `revision` matches the manifest → skip.
@@ -523,7 +523,7 @@ Two badges, both real, both maintainer-set:
 
 | Badge | Meaning |
 |---|---|
-| ✔ scoring | Maintainer reproduced EER from the submitted `scores.txt`. Default for every merged row. |
+| ✔ scoring | Maintainer reproduced EER from the `scores.txt` fetched from the submission's `scores_url`. Default for every merged row. |
 | ★ inference | Maintainer also re-ran the model end-to-end and reproduced the scores within tolerance. |
 
 No "self-reported" badge — those don't exist in the arena.

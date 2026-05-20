@@ -1,4 +1,4 @@
-# SpeechAntiSpoofingBenchmarks — Full Infrastructure Spec v3
+# SpeechAntiSpoofingBenchmarks — Full Infrastructure Spec v4
 
 This is the spec, not a roadmap. Every section is independently buildable. Cross-references use `§N`.
 
@@ -191,22 +191,26 @@ tasks:
 
 ### §1.6 Submission format
 
-`submissions/<system-slug>.yaml`. Every field is verifiable from the artifact bundle.
+`submissions/<system-slug>.yaml`. Scores files do **not** live in the dataset repo. Each submission points to a pinned, commit-immutable URL in the submitter's own HF model repo, plus a sha256 of the file at that URL. The dataset repo only stores small YAML files; `validate-dataset` and `reproduce --scoring` verify the URL and sha at submission time and nightly thereafter.
 
 ```yaml
-schema_version: 1
+schema_version: 4
 
 system:
   name: AASIST
   slug: aasist-clovaai-default
-  paper: https://arxiv.org/abs/2110.01200
+  description: Reference AASIST, default config, FP32.
   code: https://github.com/clovaai/aasist
-  checkpoint: https://huggingface.co/...
-  description: Reference AASIST, default config.
+  checkpoint: https://huggingface.co/<owner>/<aasist-repo>
+  paper:
+    arxiv_id: "2110.01200"
+    url: https://arxiv.org/abs/2110.01200
+    bibtex: |
+      @inproceedings{jung2022aasist, ... }
 
 dataset:
   id: SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
-  revision: 7f3a9b1c                       # required
+  revision: 7f3a9b1c                       # commit sha of the dataset at scoring time
   split: test
 
 scores:
@@ -216,7 +220,9 @@ scores:
   # Additional metric ids are added here as they're rolled out.
 
 artifact:
-  scores_file: scores/aasist-clovaai-default.txt
+  # Pinned, commit-immutable URL. Pattern:
+  #   https://huggingface.co/<owner>/<repo>/resolve/<commit-sha>/.eval_results/<dataset-org>/<dataset-name>/scores.txt
+  scores_url: https://huggingface.co/<owner>/<repo>/resolve/<sha>/.eval_results/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA/scores.txt
   scores_sha256: 4f9b...
   bench_version: speech-spoof-bench==0.3.1
 
@@ -234,7 +240,13 @@ submitted_at: 2026-05-19
 notes: "Reference implementation, default config, FP32."
 ```
 
-**Scores file** (`submissions/scores/<slug>.txt`):
+**Rules:**
+- `scores_url` MUST be pinned by commit sha (the `<sha>` in the `/resolve/<sha>/` segment of the URL). URLs that resolve via `main` or any branch ref are invalid — they're mutable and break sha verification.
+- `scores_sha256` MUST be the sha256 of the file at `scores_url` at submission time. `speech-spoof-bench reproduce --scoring` (§2.5) fetches the URL and recomputes the sha to verify.
+- If the model repo at `scores_url` is deleted or rewritten, the submission becomes irreproducible and is auto-flagged by `nightly-revalidate` (see §8 build order — CI/CD layer).
+- The maintainer fills in the `reproduction:` block at merge time; submitters leave it empty.
+
+**Scores file format** (uploaded by the submitter to their model repo, fetched from `scores_url`):
 ```
 LA_E_2834763 -1.234
 LA_E_1665632  2.871
@@ -282,7 +294,7 @@ Checks:
 - `audio` sampling rate is 16000; first row decodes ≥ 1 s.
 - README frontmatter has all keys from §1.4 including `arxiv`.
 - `eval.yaml` parses, matches §1.5 shape, every metric id is registered in the pip package.
-- Submission YAMLs in `submissions/` parse against the bundled JSON Schema, scores SHA matches the file, `reproduction:` block is present.
+- Submission YAMLs in `submissions/` parse against the bundled JSON Schema, `scores_url` is reachable and pinned by commit sha, `scores_sha256` matches the file fetched from `scores_url`, `reproduction:` block is present.
 
 Run by: dataset maintainer before pushing; arena maintainer before adding to manifest; submitter on their own bundle before opening a PR.
 
@@ -611,7 +623,7 @@ Short answer: **yes, easily.** The arena does not run models, does not load audi
 |---|---|---|
 | Audio (FLAC/WAV in parquet) | Dataset repos on HF (~10–50 GB each) | Zero — arena never touches it |
 | Submission YAML | Dataset repos, `submissions/*.yaml` | ~2 KB each |
-| `scores.txt` | Dataset repos, `submissions/scores/*.txt` | ~2 MB each (one number per utterance) |
+| `scores.txt` | Submitter model repos at `.eval_results/<dataset-org>/<dataset-name>/scores.txt`; referenced by `scores_url` in each submission YAML | ~2 MB each (one number per utterance) |
 | Manifest | `arena-manifest` | <10 KB |
 | Arena in-memory table | Space RAM | KB range, see §5.2 |
 

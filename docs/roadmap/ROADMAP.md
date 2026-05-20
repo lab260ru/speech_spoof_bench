@@ -10,7 +10,7 @@ The first six phases prove the data path end-to-end with the cheapest possible A
 
 ## Workspace layout
 
-All repo working copies live directly under `/home/kirill/speech-spoof-bench/`. Datasets (parquet, audio) are produced/stored **outside** this folder (e.g. `/home/kirill/datasets/`) and pushed directly to HF — they're not git-tracked locally.
+All repo working copies live directly under `/home/kirill/speech-spoof-bench/`. Dataset working copies (parquet, audio, git history) live on the larger drive at `/home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchmarks/<dataset>/` and push directly to HF — they're not tracked in the project repo.
 
 ```
 speech-spoof-bench/                     # this folder (the project root)
@@ -25,7 +25,7 @@ speech-spoof-bench/                     # this folder (the project root)
         └── README.md
 ```
 
-Datasets-as-files live elsewhere (`/home/kirill/datasets/ASVspoof2019_LA_build/` for transient parquet, or just on HF). This folder holds **only code and config**.
+Datasets-as-files live at `/home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchmarks/<dataset>/` (one git working copy per HF dataset) or just on HF. This folder holds **only code and config**.
 
 ---
 
@@ -33,12 +33,12 @@ Datasets-as-files live elsewhere (`/home/kirill/datasets/ASVspoof2019_LA_build/`
 
 **Goal**: clean slate to start working in.
 
-- [ ] `git init` each of the four sub-repos at the project root with appropriate `.gitignore`.
-- [ ] Create empty placeholder READMEs so each repo has a root commit.
-- [ ] Decide HF org name (assume `SpeechAntiSpoofingBenchmarks` per spec).
-- [ ] Create org on HF if not already (`huggingface.co/organizations`).
-- [ ] Create empty target HF repos: `arena-manifest` (dataset), `arena` (Space), `ASVspoof2019_LA` (dataset — already exists per user).
-- [ ] Create empty GitHub repo `SpeechAntiSpoofingBenchmarks/speech-spoof-bench`.
+- [x] `git init` each of the four sub-repos at the project root with appropriate `.gitignore`.
+- [x] Create empty placeholder READMEs so each repo has a root commit.
+- [x] Decide HF org name (assume `SpeechAntiSpoofingBenchmarks` per spec).
+- [x] Create org on HF if not already (`huggingface.co/organizations`).
+- [x] Create empty target HF repos: `arena-manifest` (dataset), `arena` (Space), `ASVspoof2019_LA` (dataset — already exists per user).
+- [x] Create empty GitHub repo `SpeechAntiSpoofingBenchmarks/speech-spoof-bench`.
 
 **Done when**: all five remote repos exist and four local working copies are git-initialized.
 
@@ -48,13 +48,13 @@ Datasets-as-files live elsewhere (`/home/kirill/datasets/ASVspoof2019_LA_build/`
 
 **Goal**: dataset repo matches the v4 spec exactly. No submissions yet. No CI yet.
 
-- [ ] Audit current `ASVspoof2019_LA` repo against §1.1 layout. Remove any `submissions/scores/` directory if present (v4 deletes it).
-- [ ] Verify schema is `{path, audio, label, notes}` per §1.2.
-- [ ] Verify README has frontmatter per §1.4: `tags` includes `arena-ready`, `arxiv:` list present, license correct.
-- [ ] Verify `eval.yaml` matches §1.5 (inspect-ai shape, `metrics: [eer_percent]`).
-- [ ] Add/refresh citation block in README body (arXiv link + BibTeX).
-- [ ] Create `submissions/README.md` and `submissions/results_template.yaml` with the new pointer-style template (§1.6). Empty `submissions/<slug>.yaml` set for now.
-- [ ] Commit + push.
+- [x] Audit current `ASVspoof2019_LA` repo against §1.1 layout. Remove any `submissions/scores/` directory if present (v4 deletes it).
+- [x] Verify schema is `{path, audio, label, notes}` per §1.2.
+- [x] Verify README has frontmatter per §1.4: `tags` includes `arena-ready`, `arxiv:` list present, license correct.
+- [x] Verify `eval.yaml` matches §1.5 (inspect-ai shape, `metrics: [eer_percent]`).
+- [x] Add/refresh citation block in README body (arXiv link + BibTeX).
+- [x] Create `submissions/README.md` and `submissions/results_template.yaml` with the new pointer-style template (§1.6). Empty `submissions/<slug>.yaml` set for now.
+- [x] Commit + push.
 
 **Done when**: visiting `huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA` shows the v4 layout, frontmatter is valid, `load_dataset(..., split="test")` works.
 

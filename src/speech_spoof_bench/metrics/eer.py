@@ -33,8 +33,14 @@ def compute_eer(scores: dict[str, float], labels: dict[str, int]) -> MetricResul
     thresholds = np.unique(np.concatenate([bona, spoof]))
     # FAR(t) = P(spoof score >= t) — spoof accepted as bonafide.
     # FRR(t) = P(bonafide score < t) — bonafide rejected.
-    far = np.array([(spoof >= t).mean() for t in thresholds])
-    frr = np.array([(bona < t).mean() for t in thresholds])
+    # Vectorized via searchsorted on sorted arrays (O(N log N) vs O(N²)).
+    spoof_sorted = np.sort(spoof)
+    bona_sorted = np.sort(bona)
+    # searchsorted(..., side="left") returns count of elements strictly < t,
+    # so n_spoof - that = count of elements >= t.
+    far = (spoof_sorted.size - np.searchsorted(spoof_sorted, thresholds, side="left")) / spoof_sorted.size
+    # searchsorted(..., side="left") = count of elements strictly < t.
+    frr = np.searchsorted(bona_sorted, thresholds, side="left") / bona_sorted.size
 
     # Find where FAR and FRR cross.
     diff = far - frr

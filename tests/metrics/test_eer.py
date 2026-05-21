@@ -63,3 +63,15 @@ def test_eer_known_intermediate():
     result = get_metric("eer_percent").fn(scores, labels)
     assert result.value == pytest.approx(15.87, abs=1.5)
     assert "threshold" in result.extras
+
+
+def test_eer_raises_when_no_bonafide():
+    scores, labels = _make_inputs(bonafide_scores=[], spoof_scores=[1.0, 2.0])
+    with pytest.raises(ValueError, match="bonafide"):
+        get_metric("eer_percent").fn(scores, labels)
+
+
+def test_eer_raises_when_no_spoof():
+    scores, labels = _make_inputs(bonafide_scores=[1.0, 2.0], spoof_scores=[])
+    with pytest.raises(ValueError, match="spoof"):
+        get_metric("eer_percent").fn(scores, labels)

@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "speech-spoof-bench submission (v4)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "system", "dataset", "scores", "artifact", "reproduction", "submitter", "submitted_at"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 4},
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "slug", "description", "code", "checkpoint", "paper"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "description": {"type": "string"},
+        "code": {"type": "string", "format": "uri"},
+        "checkpoint": {"type": "string", "format": "uri"},
+        "paper": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["arxiv_id", "url", "bibtex"],
+          "properties": {
+            "arxiv_id": {"type": "string", "minLength": 1},
+            "url": {"type": "string", "format": "uri"},
+            "bibtex": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "split"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[^/]+/[^/]+$"},
+        "revision": {"type": "string", "minLength": 1},
+        "split": {"type": "string", "minLength": 1}
+      }
+    },
+    "scores": {
+      "type": "object",
+      "required": ["n_trials", "n_skipped"],
+      "properties": {
+        "n_trials": {"type": "integer", "minimum": 0},
+        "n_skipped": {"type": "integer", "minimum": 0}
+      },
+      "patternProperties": {
+        "^(?!n_trials$|n_skipped$).+$": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scores_url", "scores_sha256", "bench_version"],
+      "properties": {
+        "scores_url": {
+          "type": "string",
+          "pattern": "^https://huggingface\\.co/[^/]+/[^/]+/resolve/[0-9a-f]{7,40}/"
+        },
+        "scores_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bench_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "reproduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reproduced_by", "reproduced_at", "reproduced_bench_version", "match"],
+      "properties": {
+        "reproduced_by": {"type": "string", "minLength": 1},
+        "reproduced_at": {"type": "string", "format": "date"},
+        "reproduced_bench_version": {"type": "string", "minLength": 1},
+        "match": {"enum": ["scoring", "inference"]}
+      }
+    },
+    "submitter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hf_username", "contact"],
+      "properties": {
+        "hf_username": {"type": "string", "minLength": 1},
+        "contact": {"type": "string", "minLength": 1}
+      }
+    },
+    "submitted_at": {"type": "string", "format": "date"},
+    "notes": {"type": "string"}
+  }
+}

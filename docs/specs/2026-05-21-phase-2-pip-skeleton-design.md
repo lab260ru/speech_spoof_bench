@@ -68,8 +68,9 @@ class SimpleAntiSpoofingModel(AntiSpoofingModel):
 
 Contracts:
 - Audio is float32 mono, resampled to 16 kHz by the runner before the model sees it.
-- `load`/`unload` are called once per dataset.
-- An exception inside `score_batch` aborts the whole batch; those items count as skipped.
+- `load`/`unload` are called once per `Benchmark.run` invocation — not per dataset. The model is loaded once at the start and torn down once at the end, regardless of how many datasets are being evaluated.
+- The model must handle any batch size `1 ≤ k ≤ batch_size`. The runner falls back to single-item scoring when a batch raises (see runner), so a working `score_batch([audio], [sr])` path is required.
+- If `score_batch` raises on a single-item call, that one utterance is skipped. If it raises on a multi-item batch, the runner retries each item individually and skips only the ones that still raise.
 - If `n_skipped / n_total > 0.05` for a dataset, the runner raises `TooManySkips`.
 - Test-time augmentation: the model performs N internal augmentations inside `score_batch` and aggregates before returning one score per input. The runner sees one score per utterance regardless.
 - `batch_size` lets each model declare its preferred chunk size — AASIST might set 16, the random baseline sets 1.
@@ -167,10 +168,10 @@ Steps:
 2. Iterate `dataset` in chunks of `model.batch_size`. For each chunk:
    - Extract `audio.array`, `audio.sampling_rate`, and `utterance_id` from `json.loads(row["notes"])`.
    - Resample to 16 kHz if needed (`scipy.signal.resample_poly`).
-   - Call `model.score_batch(audios, srs)`.
-   - On exception: log, count items as skipped, continue.
-   - Write one line per item: `<utterance_id> <score>\n`.
-3. Track `n_total`, `n_skipped`. If `n_skipped / n_total > 0.05`: raise `TooManySkips`.
+   - Call `model.score_batch(audios, srs)`. On the happy path, write one line per item: `<utterance_id> <score>\n`.
+   - On exception in a multi-item batch: log the batch failure at debug level, then **fall back to per-item scoring** — call `model.score_batch([audio_i], [sr_i])` for each item in the chunk independently. Items that still raise are logged at warning level and counted in `n_skipped`; successful items are written normally. This guarantees a single bad utterance never poisons the rest of its batch.
+   - On exception in a single-item call (during fallback, or when `batch_size == 1`): log, increment `n_skipped`, continue.
+3. Track `n_total` (items attempted) and `n_skipped` (items that raised individually). If `n_skipped / n_total > 0.05`: raise `TooManySkips`.
 4. Collect labels (0=bonafide, 1=spoof) for downstream metric computation.
 5. Return `RunResult`.
 
@@ -189,19 +190,22 @@ def run(
 ) -> dict[str, BenchmarkResult]: ...
 ```
 
+Lifecycle:
+1. `model.load()` is called **once**, before the dataset loop.
+2. The per-dataset loop below runs for each spec.
+3. `model.unload()` is called **once**, after the loop (in a `try/finally` so it runs on exceptions too).
+
 Per dataset spec:
 1. `source, ds = loader.resolve(spec, streaming=streaming)`.
 2. `out = Path(output_dir) / source.slug`.
 3. If `skip_existing` and `out/result.yaml` exists with matching `revision` → skip.
-4. `model.load()`.
-5. `run_result = runner.run_dataset(model, source, ds, out)`.
-6. `model.unload()`.
-7. For each metric id in `source.metrics`: `get_metric(id).fn(scores, run_result.labels)`; collect into a dict.
-8. Write `out/result.yaml` — partially-filled v4 submission template (per PLAN.md §1.6):
+4. `run_result = runner.run_dataset(model, source, ds, out)`.
+5. For each metric id in `source.metrics`: `get_metric(id).fn(scores, run_result.labels)`; collect into a dict.
+6. Write `out/result.yaml` — partially-filled v4 submission template (per PLAN.md §1.6):
    - **Populated**: `schema_version: 4`, `system.name`, `dataset.id` (= `source.canonical_id`), `dataset.revision` (or `null` in local mode), `dataset.split`, `scores.<metric_id>` for each computed metric, `scores.n_trials`, `scores.n_skipped`, `artifact.scores_sha256` (sha256 of `scores.txt`), `artifact.bench_version`.
    - **Left empty**: `system.description/code/checkpoint/paper`, `artifact.scores_url`, the entire `reproduction:` block, the entire `submitter:` block, `submitted_at`, `notes`. Submitter or the future `submit` CLI fills these in.
 
-9. If `cleanup=True` and `source.is_local is False`: `cache.purge_hf_cache(source.canonical_id)`. No-op for local sources.
+7. If `cleanup=True` and `source.is_local is False`: `cache.purge_hf_cache(source.canonical_id)`. No-op for local sources.
 
 `datasets="all"` requires the manifest, which is Phase 4. At Phase 2, `"all"` raises `NotImplementedError` with a message pointing at Phase 4. Users must pass explicit specs.
 
@@ -268,7 +272,11 @@ Seeded so EER is reproducibly near 50%.
   - **Local**: build a temp dir with a tiny synthetic parquet (`data/test-00000-of-00001.parquet`) + hand-written `eval.yaml`; assert `DatasetSource` fields are correct, dataset iterates, schema matches.
   - **HF**: monkeypatch `datasets.load_dataset` + `hf_hub_download`; assert dispatch hits the HF branch with expected args.
   - **Bad input**: nonexistent path that doesn't look like a repo id → `ValueError`.
-- `tests/test_runner.py` — synthetic `IterableDataset` of 10 items + dummy model; assert `scores.txt` is well-formed; inject one row where the model raises and assert `n_skipped == 1`.
+- `tests/test_runner.py` — synthetic `IterableDataset` of 10 items + dummy model; assert `scores.txt` is well-formed.
+  - **Per-item skip in a multi-item batch** (`batch_size=4`): one of the items causes `score_batch` to raise when included; the same item raises in single-item fallback too. Assert the other items in its batch are still scored, and `n_skipped == 1`.
+  - **Flaky-batch recovery**: model raises on any batch larger than 1 but succeeds on single-item calls. Assert all items are scored (via fallback) and `n_skipped == 0`.
+  - **`load`/`unload` called exactly once across multiple datasets**: count calls in a stub model; run `Benchmark.run` over two synthetic dataset sources; assert `load_count == 1` and `unload_count == 1`.
+  - **`TooManySkips`**: force >5% items to raise; assert the run aborts that dataset with the expected error.
 
 No GPU, no network, no real datasets in CI. The Phase 6 smoke test exercises the real path manually.
 

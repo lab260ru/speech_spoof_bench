@@ -1,8 +1,16 @@
 # speech-spoof-bench
 
-Pip package and CI for the SpeechAntiSpoofingBenchmarks project — a leaderboard arena for speech anti-spoofing models.
+Benchmark harness for the [SpeechAntiSpoofingBenchmarks](https://huggingface.co/SpeechAntiSpoofingBenchmarks) org. Run anti-spoofing models against published datasets (HF) or a local copy on disk.
 
-- Project plan: [`docs/roadmap/PLAN.md`](docs/roadmap/PLAN.md)
-- Implementation roadmap: [`docs/roadmap/ROADMAP.md`](docs/roadmap/ROADMAP.md)
+## Install
 
-Status: Phase 0 (workspace setup). Nothing to install yet.
+    pip install -e .
+
+## Quick start
+
+    speech-spoof-bench run \
+        --model-module speech_spoof_bench.examples.random_baseline:RandomBaseline \
+        --datasets /path/to/local/ASVspoof2019_LA \
+        --output-dir ./results
+
+For full design and roadmap see `docs/roadmap/PLAN.md` and `docs/roadmap/ROADMAP.md`.

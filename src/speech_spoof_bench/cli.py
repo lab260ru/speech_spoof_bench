@@ -41,8 +41,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
-    print("listing manifest datasets is part of phase 4", file=sys.stderr)
-    return 2
+    from . import manifest as mf
+
+    m = mf.fetch_manifest()
+    for entry in m["core_set"]:
+        print(f"[core] {entry['id']}")
+    for entry in m["extended"]:
+        print(f"[ext]  {entry['id']}")
+    return 0
 
 
 def _cmd_validate_dataset(args: argparse.Namespace) -> int:
@@ -59,6 +65,22 @@ def _cmd_validate_dataset(args: argparse.Namespace) -> int:
     if not notes.get("utterance_id"):
         raise SystemExit("first row's notes JSON has no non-empty 'utterance_id'")
     print(f"OK: {source.canonical_id} (display: {source.display_name!r})")
+    return 0
+
+
+def _cmd_manifest(args: argparse.Namespace) -> int:
+    """Print the raw manifest.yaml contents verbatim to stdout."""
+    from pathlib import Path
+    from . import manifest as mf
+
+    # Reuse the repo coordinates from the manifest module, but skip the
+    # parse/validate round-trip so the output equals the upstream file byte-for-byte.
+    local = mf.hf_hub_download(
+        repo_id=mf.MANIFEST_REPO,
+        repo_type="dataset",
+        filename=mf.MANIFEST_FILENAME,
+    )
+    sys.stdout.write(Path(local).read_text())
     return 0
 
 
@@ -79,6 +101,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     lst = sub.add_parser("list", help="list datasets in the arena manifest")
     lst.set_defaults(func=_cmd_list)
+
+    man = sub.add_parser("manifest",
+                         help="print the arena-manifest YAML contents")
+    man.set_defaults(func=_cmd_manifest)
 
     vd = sub.add_parser("validate-dataset",
                         help="quick check that a dataset loads with the v4 schema")

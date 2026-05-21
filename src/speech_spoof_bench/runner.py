@@ -22,7 +22,6 @@ from .model import AntiSpoofingModel
 _LOG = logging.getLogger(__name__)
 
 SKIP_FRACTION_THRESHOLD = 0.05
-_MIN_SKIPS_FOR_THRESHOLD = 2  # don't penalise a lone bad item in a small set
 
 
 class TooManySkips(RuntimeError):
@@ -140,11 +139,7 @@ def run_dataset(
                 _flush(out_f)
         _flush(out_f)
 
-    if (
-        result.n_total > 0
-        and result.n_skipped >= _MIN_SKIPS_FOR_THRESHOLD
-        and result.n_skipped / result.n_total > SKIP_FRACTION_THRESHOLD
-    ):
+    if result.n_total > 0 and result.n_skipped / result.n_total > SKIP_FRACTION_THRESHOLD:
         raise TooManySkips(
             f"dataset {source.slug!r}: {result.n_skipped}/{result.n_total} items "
             f"skipped (> {SKIP_FRACTION_THRESHOLD:.0%})"

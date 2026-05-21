@@ -94,7 +94,7 @@ def test_per_item_skip_only_offender_in_multi_item_batch(tmp_path):
                 raise RuntimeError("batch contains bad item")
             return [float(a.sum()) for a in audios]
 
-    rows = _make_rows(8)
+    rows = _make_rows(40)
     # Tag row 3 with a NaN-containing audio.
     rows[3]["audio"]["array"] = np.full(100, np.nan, dtype=np.float32)
 
@@ -103,11 +103,11 @@ def test_per_item_skip_only_offender_in_multi_item_batch(tmp_path):
     res = run_dataset(m, _source(), rows, tmp_path)
     m.unload()
 
-    # Item 3 should be skipped; the other 7 scored successfully.
-    assert res.n_total == 8
+    # Item 3 should be skipped; the other 39 scored successfully.
+    assert res.n_total == 40
     assert res.n_skipped == 1
     lines = res.scores_path.read_text().strip().splitlines()
-    assert len(lines) == 7
+    assert len(lines) == 39
     assert "UTT_0003" not in res.scores_path.read_text()
 
 

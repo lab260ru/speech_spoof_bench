@@ -8,5 +8,12 @@ dist/
 htmlcov/
 .venv/
 venv/
+env/
 results/
 .DS_Store
+.vscode/
+.idea/
+*.swp
+*.log
+.mypy_cache/
+.ruff_cache/

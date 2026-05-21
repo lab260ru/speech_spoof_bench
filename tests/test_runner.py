@@ -33,7 +33,7 @@ class _CountingModel(AntiSpoofingModel):
         return [float(a.sum()) for a, s in zip(audios, srs)]
 
 
-def _make_rows(n, sr=16000, bad_index=None):
+def _make_rows(n, sr=16000):
     """Produce a synthetic IterableDataset-like list of rows."""
     rng = np.random.default_rng(0)
     rows = []
@@ -45,8 +45,6 @@ def _make_rows(n, sr=16000, bad_index=None):
             "label": i % 2,
             "notes": json.dumps({"utterance_id": f"UTT_{i:04d}"}),
         }
-        if bad_index is not None and i == bad_index:
-            row["_force_raise"] = True
         rows.append(row)
     return rows
 

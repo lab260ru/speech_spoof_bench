@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from math import gcd
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -42,7 +43,6 @@ def _to_float32_mono_16k(audio_array: np.ndarray, sr: int, target_sr: int) -> np
         # average channels (defensive — datasets are mono per §1.2)
         a = a.mean(axis=0).astype(np.float32)
     if sr != target_sr:
-        from math import gcd
         g = gcd(int(sr), int(target_sr))
         up, down = int(target_sr // g), int(sr // g)
         a = resample_poly(a, up, down).astype(np.float32)
@@ -72,13 +72,22 @@ def _score_with_fallback(
     """
     if len(audios) == 1:
         try:
-            return [float(model.score_batch(audios, srs)[0])]
+            out = model.score_batch(audios, srs)
+            if len(out) != 1:
+                raise ValueError(
+                    f"model returned {len(out)} scores for 1 input"
+                )
+            return [float(out[0])]
         except Exception as exc:
             _LOG.warning("score_batch failed on single item: %s", exc)
             return [None]
 
     try:
         out = model.score_batch(audios, srs)
+        if len(out) != len(audios):
+            raise ValueError(
+                f"model returned {len(out)} scores for {len(audios)} inputs"
+            )
         return [float(x) for x in out]
     except Exception as exc:
         _LOG.debug("multi-item batch failed (%s); falling back to per-item", exc)

@@ -19,3 +19,9 @@ Running notes captured during implementation of project specs/plans. Decisions, 
 - Changed: Plan's reference EER implementation was O(N²) — the FAR/FRR sweep used Python list comprehensions `[(spoof >= t).mean() for t in thresholds]`. Measured ~7.5s on LA's 71k thresholds (reviewer ran the actual benchmark). Vectorized using `np.sort` + `np.searchsorted` → ~0.04s on 100k items (700× speedup). Algorithm semantics preserved exactly: same threshold sweep, same crossover interpolation.
 - Tradeoff: Skipped reviewer's minor suggestions (rename `id` param to `metric_id`, add `_clear_registry_for_testing` hook). YAGNI for Phase 2.
 - Validation: 6/6 metric tests pass (4 original + 2 added for empty-bona/empty-spoof `ValueError`).
+
+### Task 5 — runner
+
+- Decision: Reviewer flagged that the plan's `test_per_item_skip_only_offender_in_multi_item_batch` used 8 rows + 1 bad item — but 1/8 = 12.5% trips the 5% TooManySkips threshold. Initial implementer hacked around it by adding `_MIN_SKIPS_FOR_THRESHOLD = 2` to the runner; that silently weakened production behavior. Reverted: grew test to 40 rows (1/40 = 2.5% < 5%) and restored the runner to the spec's two-condition check.
+- Changed: After code-review nits — hoisted `from math import gcd` out of the inner branch; dropped dead `bad_index`/`_force_raise` parameter from test helper; added a length check on `model.score_batch` return value so a misbehaving model that returns the wrong number of scores triggers the per-item fallback instead of silently dropping items.
+- Validation: 21/21 tests pass.

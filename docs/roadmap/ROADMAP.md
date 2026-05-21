@@ -94,12 +94,12 @@ produces a `results/ASVspoof2019_LA/scores.txt` + `result.yaml` locally. EER is 
 
 **Goal**: produce a working `submissions/<slug>.yaml` in the dataset repo, **manually** (no `submit` CLI yet). Proves the v4 pointer-style schema works end-to-end before we automate it.
 
-- [ ] Create a personal HF model repo `<you>/random-baseline-asas` (just a stub, no checkpoint).
-- [ ] Upload `scores.txt` produced in Phase 2 to `<you>/random-baseline-asas/.eval_results/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA/scores.txt`. Note the commit sha.
-- [ ] Compute `scores_sha256` locally (`sha256sum scores.txt`).
-- [ ] Hand-author `submissions/random-baseline.yaml` in the LA dataset repo per §1.6: pointer URL + sha + paper (use a placeholder arXiv ID and a real BibTeX entry) + `reproduction:` block filled in (level: `scoring`, `reproduced_at: <today>`).
-- [ ] For the random baseline, paper field can point to ASVspoof2019 paper itself (the dataset paper, since "random" has no paper). Document this convention.
-- [ ] Push directly to main (you're the maintainer, no PR/CI yet).
+- [x] Create a personal HF model repo `<you>/random-baseline-asas` (just a stub, no checkpoint).
+- [x] Upload `scores.txt` produced in Phase 2 to `<you>/random-baseline-asas/.eval_results/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA/scores.txt`. Note the commit sha.
+- [x] Compute `scores_sha256` locally (`sha256sum scores.txt`).
+- [x] Hand-author `submissions/random-baseline.yaml` in the LA dataset repo per §1.6: pointer URL + sha + paper (use a placeholder arXiv ID and a real BibTeX entry) + `reproduction:` block filled in (level: `scoring`, `reproduced_at: <today>`).
+- [x] For the random baseline, paper field can point to ASVspoof2019 paper itself (the dataset paper, since "random" has no paper). Document this convention.
+- [x] Push directly to main (you're the maintainer, no PR/CI yet).
 
 **Done when**: one valid v4 submission YAML exists in the dataset repo, references real `scores.txt` in a model repo, sha256 matches.
 
@@ -111,10 +111,10 @@ produces a `results/ASVspoof2019_LA/scores.txt` + `result.yaml` locally. EER is 
 
 In `./arena-manifest/`:
 
-- [ ] `manifest.yaml` per §4 — `ranking_version: v1`, `tiers` (gold/silver/bronze), `core_set` with just LA pinned to current commit sha, empty `extended`.
-- [ ] Push to `huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/arena-manifest`.
+- [x] `manifest.yaml` per §4 — `ranking_version: v1`, `tiers` (gold/silver/bronze), `core_set` with just LA pinned to current commit sha, empty `extended`.
+- [x] Push to `huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/arena-manifest`.
 
-**Done when**: `speech-spoof-bench manifest` CLI (add this to Phase 2 if not yet) prints the manifest contents.
+**Done when**: `speech-spoof-bench manifest` CLI (add this to Phase 2 if not yet) prints the manifest contents. ✓
 
 ---
 

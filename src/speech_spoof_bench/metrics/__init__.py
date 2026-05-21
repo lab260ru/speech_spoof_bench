@@ -70,3 +70,10 @@ def list_metrics() -> list[MetricSpec]:
 
 def is_registered(id: str) -> bool:
     return id in _REGISTRY
+
+
+# Auto-import built-in metric modules so their @register_metric decorators
+# fire on package import. New metric files dropped into this directory need
+# to be added here (one line) to participate without an explicit import at
+# every call site.
+from . import eer  # noqa: E402, F401

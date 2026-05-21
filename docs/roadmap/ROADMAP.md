@@ -66,16 +66,17 @@ Datasets-as-files live at `/home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchma
 
 In `./speech-spoof-bench/`:
 
-- [ ] `pyproject.toml` (core deps only: `datasets`, `huggingface_hub`, `numpy`, `pyyaml`, `jsonschema`, `scipy`).
-- [ ] `src/speech_spoof_bench/model.py` — `AntiSpoofingModel` ABC (§2.2).
-- [ ] `src/speech_spoof_bench/metrics/eer.py` + `__init__.py` with `register_metric` decorator + `MetricResult` (§2.6).
-- [ ] `src/speech_spoof_bench/runner.py` — streaming row iteration, calls `model.score_batch`, writes `scores.txt`.
-- [ ] `src/speech_spoof_bench/benchmark.py` — `Benchmark.run` orchestrator (§2.3).
-- [ ] `src/speech_spoof_bench/cache.py` — `cleanup=True` purges HF cache for a given dataset id.
-- [ ] `src/speech_spoof_bench/manifest.py` — read `arena-manifest.yaml` from HF.
-- [ ] `src/speech_spoof_bench/examples/random_baseline.py` — concrete `AntiSpoofingModel` returning `np.random.randn()`.
-- [ ] `src/speech_spoof_bench/cli.py` — at minimum: `run`, `list`, `validate-dataset` (latter can be a stub that just confirms the dataset loads).
-- [ ] One unit test per metric in `tests/metrics/test_eer.py` (synthetic scores → known EER).
+- [x] `pyproject.toml` (core deps only: `datasets`, `huggingface_hub`, `numpy`, `pyyaml`, `jsonschema`, `scipy`).
+- [x] `src/speech_spoof_bench/model.py` — `AntiSpoofingModel` ABC (§2.2).
+- [x] `src/speech_spoof_bench/metrics/eer.py` + `__init__.py` with `register_metric` decorator + `MetricResult` (§2.6).
+- [x] `src/speech_spoof_bench/loader.py` — local-or-HF dispatch reading `eval.yaml`.
+- [x] `src/speech_spoof_bench/runner.py` — streaming row iteration, calls `model.score_batch`, writes `scores.txt`. Per-item fallback on batch errors.
+- [x] `src/speech_spoof_bench/benchmark.py` — `Benchmark.run` orchestrator (§2.3). `load`/`unload` once per evaluation in `try/finally`.
+- [x] `src/speech_spoof_bench/cache.py` — `cleanup=True` purges HF cache for a given dataset id.
+- [x] `src/speech_spoof_bench/manifest.py` — stub (full impl phase 4).
+- [x] `src/speech_spoof_bench/examples/random_baseline.py` — concrete `AntiSpoofingModel` returning `np.random.randn()`.
+- [x] `src/speech_spoof_bench/cli.py` — at minimum: `run`, `list`, `validate-dataset` (latter is a stub that confirms the dataset loads).
+- [x] One unit test per metric in `tests/metrics/test_eer.py` (synthetic scores → known EER). Plus tests for loader, runner, benchmark, model, cli.
 
 **Skip for now**: `submit`, `ci verify-pr`, `scaffold-dataset`, webhook handler, full `validate-dataset` checks, `reproduce`. Those come in Phase 6+.
 

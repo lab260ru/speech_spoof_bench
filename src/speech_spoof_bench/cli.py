@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import json
 import logging
 import sys
 from typing import Sequence
 
 from .benchmark import Benchmark
-from .loader import resolve
 
 
 def _import_model_class(spec: str):
@@ -52,20 +50,12 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_validate_dataset(args: argparse.Namespace) -> int:
-    source, ds = resolve(args.spec, streaming=True)
-    first = next(iter(ds))
-    expected = {"path", "audio", "label", "notes"}
-    actual = set(first.keys())
-    if not expected.issubset(actual):
-        raise SystemExit(
-            f"dataset row missing required columns: {expected - actual} "
-            f"(got {sorted(actual)})"
-        )
-    notes = json.loads(first["notes"])
-    if not notes.get("utterance_id"):
-        raise SystemExit("first row's notes JSON has no non-empty 'utterance_id'")
-    print(f"OK: {source.canonical_id} (display: {source.display_name!r})")
-    return 0
+    from . import validate
+    report = validate.validate_dataset(
+        args.spec, skip_submissions=args.skip_submissions
+    )
+    print(report.format())
+    return 0 if report.ok else 1
 
 
 def _cmd_manifest(args: argparse.Namespace) -> int:
@@ -125,9 +115,13 @@ def build_parser() -> argparse.ArgumentParser:
                          help="print the arena-manifest YAML contents")
     man.set_defaults(func=_cmd_manifest)
 
-    vd = sub.add_parser("validate-dataset",
-                        help="quick check that a dataset loads with the v4 schema")
+    vd = sub.add_parser(
+        "validate-dataset",
+        help="full §1.9 dataset + submission validation",
+    )
     vd.add_argument("spec", help="local dir path or org/name HF repo id")
+    vd.add_argument("--skip-submissions", action="store_true",
+                    help="skip per-submission network checks")
     vd.set_defaults(func=_cmd_validate_dataset)
 
     vs = sub.add_parser(

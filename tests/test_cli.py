@@ -40,7 +40,7 @@ def test_cli_run_against_local(synth_local_dataset: Path, tmp_path: Path):
 
 
 def test_cli_validate_dataset_local(synth_local_dataset: Path):
-    rc = main(["validate-dataset", str(synth_local_dataset)])
+    rc = main(["validate-dataset", str(synth_local_dataset), "--skip-submissions"])
     assert rc == 0
 
 

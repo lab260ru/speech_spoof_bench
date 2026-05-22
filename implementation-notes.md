@@ -65,3 +65,30 @@ Running notes captured during implementation of project specs/plans. Decisions, 
 - Validation: 46/46 tests pass. `speech-spoof-bench manifest` against real HF matches the local `arena-manifest/manifest.yaml`. `speech-spoof-bench list` prints exactly `[core] SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA`. ROADMAP Phase 4 checkboxes ticked in commit `ef45ee5`.
 
 Phase 4 commits in `speech-spoof-bench` repo: `380615c`, `ae6c36c`, `2aef9a0`, `ef45ee5`. Plus `ab59e25` in the `arena-manifest` repo.
+
+## 2026-05-22 — Phase 6 end-to-end smoke test
+
+- Spec: `docs/specs/2026-05-22-phase6-smoke-test.md`
+- Plan: `docs/plans/2026-05-22-phase6-smoke-test.md`
+- Execution mode: hybrid — one subagent for the three autonomous checks (sha parity, rerun reproducibility, EER parity); inline for the three browser-verified checks (cold-start, edit/refresh, malformed YAML)
+- Rationale: this phase writes no code, so the implementer+spec+quality review loop in subagent-driven-development would burn tokens reviewing nothing. Browser-verified tasks also need live human pauses that subagents cannot do.
+- Spec amendment mid-flight: original spec said the random baseline was unseeded and "we do not re-run"; checking `examples/random_baseline.py` showed `seed=0` default, so the spec was updated to include a regeneration check (Task 2 in the plan).
+
+### Results
+
+- Check 1 (sha parity, 3-way): PASS. Local, model-repo (`hf_hub_download` at pinned commit `f63c30b`), and YAML `artifact.scores_sha256` all = `71ac000c…55587`.
+- Check 1b (rerun reproducibility): PASS. `speech-spoof-bench run --output-dir /tmp/phase6-rerun --datasets <local LA dir>` produced bit-identical `scores.txt`. Confirmed CLI supports `--output-dir`; `--datasets` accepts local paths (no `--data-dir` flag needed — avoided HF download).
+- Check 2 (EER parity): PASS. `compute_eer` returned `49.870836165873556` exactly. Note: `MetricResult.value` for `eer_percent` is already in percent units (not fraction). LA labels exposed as `path` + `label` (ClassLabel bonafide=0/spoof=1); subagent stripped `.flac` suffix to align utt_ids with scores.txt — 71237/71237 matched.
+- Check 3 (Arena cold-start): PASS (user-confirmed in browser).
+- Check 4 (edit + refresh round-trip): PASS. Bumped `eer_percent` +1.00 in `submissions/random-baseline.yaml` on LA dataset HF repo, user confirmed visible after Refresh, then `git revert HEAD` restored it. Two LA-repo commits added then reverted.
+- Check 5 (malformed YAML resilience): PASS. Pushed `submissions/broken-test.yaml` with unterminated string. User confirmed via Arena Refresh: random-baseline row still visible AND About tab surfaced the `ScannerError` warning. Deleted the broken file with a follow-up commit.
+
+### Validation summary
+
+All five Phase 6 checks PASS. Ingest is resilient to per-file YAML errors (one bad file → warning, doesn't sink the rest). The seeded random baseline reproduces bit-exact, so the artifact chain from local → model-repo → submission YAML → Arena is verifiably consistent. No code changed. Phase 6 checkboxes ticked in `ROADMAP.md`. Ready for Phase 7.
+
+### Follow-ups / not verified
+
+- `cli.py`'s `validate-dataset` is still a Phase 2 stub; full schema/sha/EER drift checks come in Phase 7. The Phase 6 verification ran these checks ad-hoc; Phase 7 should formalize them in `reproduce --scoring`.
+- LA dataset working copy at `/home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA` accumulated 4 smoke-test commits today (bump, revert, broken add, broken remove). They're all on `main`; left as-is for audit trail.
+

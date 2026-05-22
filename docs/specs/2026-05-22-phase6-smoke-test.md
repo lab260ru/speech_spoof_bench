@@ -26,7 +26,7 @@ Five checks. Three are autonomous (Claude executes). Two require browser verific
 - Read `scores_sha256` from `submissions/random-baseline.yaml` in the LA dataset repo.
 - Assert all three match: downloaded-file sha == YAML's `scores_sha256` == local `results/ASVspoof2019_LA/scores.txt` sha.
 
-Note: the random baseline is unseeded, so re-running `speech-spoof-bench run` would produce different scores. We do not re-run here; we verify the artifact chain (local → model repo → submission YAML sha) is consistent.
+Note: the random baseline is seeded (`seed=0` default), so re-running `speech-spoof-bench run` reproduces scores byte-for-byte. The check additionally re-runs and confirms the freshly-generated `scores.txt` has the same sha as all three other sources.
 
 ### Check 2 — EER parity (autonomous)
 

@@ -124,12 +124,12 @@ In `./arena-manifest/`:
 
 In `./arena/`:
 
-- [ ] `app.py` — Gradio app with 3 tabs: Overview, Per-dataset, About.
-- [ ] `ingest.py` — at cold start: fetch manifest → for each dataset, `list_repo_files` → fetch each `submissions/*.yaml` → build in-memory `Row` list (§3.4).
-- [ ] `ranking.py` — minimal tier assignment (§3.7).
-- [ ] `ui/overview.py`, `ui/per_dataset.py`, `ui/about.py` — Gradio DataFrames.
-- [ ] Manual "Refresh" button that re-runs `ingest.py`.
-- [ ] Push to `huggingface.co/spaces/SpeechAntiSpoofingBenchmarks/arena` as a plain Gradio Space (not Docker yet — Docker comes in Phase 7).
+- [x] `app.py` — Gradio app with 3 tabs: Overview, Per-dataset, About.
+- [x] `ingest.py` — at cold start: fetch manifest → for each dataset, `list_repo_files` → fetch each `submissions/*.yaml` → build in-memory `Row` list (§3.4).
+- [x] `ranking.py` — minimal tier assignment (§3.7).
+- [x] `ui/overview.py`, `ui/per_dataset.py`, `ui/about.py` — Gradio DataFrames.
+- [x] Manual "Refresh" button that re-runs `ingest.py`.
+- [x] Push to `huggingface.co/spaces/SpeechAntiSpoofingBenchmarks/arena` as a plain Gradio Space (not Docker yet — Docker comes in Phase 7).
 
 **Skip for now**: system-detail page, paper rendering, submit tab, Docker, webhook, `cache.json`.
 
@@ -142,11 +142,11 @@ In `./arena/`:
 **Stop here and verify everything works** before adding automation.
 
 Checklist:
-- [ ] `speech-spoof-bench run` on LA produces `scores.txt` matching what's in the model repo.
-- [ ] EER computed locally matches `scores.eer_percent` in the submission YAML.
-- [ ] Arena cold-starts and shows the row.
-- [ ] Manually edit the submission YAML (e.g. change the EER value), push, hit Refresh in Arena — the change appears.
-- [ ] Manually break the YAML (malformed) — Arena logs a warning in About, doesn't crash.
+- [x] `speech-spoof-bench run` on LA produces `scores.txt` matching what's in the model repo.
+- [x] EER computed locally matches `scores.eer_percent` in the submission YAML.
+- [x] Arena cold-starts and shows the row.
+- [x] Manually edit the submission YAML (e.g. change the EER value), push, hit Refresh in Arena — the change appears.
+- [x] Manually break the YAML (malformed) — Arena logs a warning in About, doesn't crash.
 
 If any of these fail: fix before proceeding. Do not add more datasets, models, or automation until the smoke test is green.
 

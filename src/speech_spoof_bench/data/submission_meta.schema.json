@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "speech-spoof-bench submission meta",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["system"],
+  "properties": {
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "slug", "description", "code", "checkpoint", "paper"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "description": {"type": "string"},
+        "code": {"type": "string", "format": "uri"},
+        "checkpoint": {"type": "string", "format": "uri"},
+        "paper": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["arxiv_id", "url", "bibtex"],
+          "properties": {
+            "arxiv_id": {"type": "string", "minLength": 1},
+            "url": {"type": "string", "format": "uri"},
+            "bibtex": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "notes": {"type": "string"}
+  }
+}

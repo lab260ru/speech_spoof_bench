@@ -79,4 +79,32 @@ def synth_local_dataset(tmp_path) -> Path:
         ],
     }
     (root / "eval.yaml").write_text(yaml.safe_dump(eval_yaml))
+
+    readme = """---
+license: cc-by-4.0
+language: [en]
+pretty_name: Synth Dataset TEST
+task_categories: [audio-classification]
+size_categories: [n<1K]
+configs:
+  - config_name: default
+    data_files:
+      - {split: test, path: "data/test-*.parquet"}
+arxiv:
+  - 1911.01601
+tags:
+  - anti-spoofing
+  - arena-ready
+---
+
+# Synth Dataset TEST
+Synthetic fixture used by 7a tests.
+"""
+    (root / "README.md").write_text(readme)
+
+    (root / "submissions").mkdir()
+    fixture_src = Path(__file__).parent / "fixtures" / "submissions" / "valid.yaml"
+    sub = yaml.safe_load(fixture_src.read_text())
+    (root / "submissions" / "fixture.yaml").write_text(yaml.safe_dump(sub))
+
     return root

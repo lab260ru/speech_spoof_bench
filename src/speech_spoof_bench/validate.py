@@ -15,6 +15,7 @@ import yaml
 from datasets import ClassLabel
 from huggingface_hub import hf_hub_download
 
+from . import hf_fetch
 from .loader import resolve
 
 REQUIRED_README_KEYS = {
@@ -101,6 +102,35 @@ def _load_readme(spec_path: Path | None, repo_id: str | None) -> str:
         repo_id=repo_id, filename="README.md", repo_type="dataset"
     )
     return Path(local).read_text()
+
+
+def _list_submission_paths(
+    spec_path: Path | None, repo_id: str | None
+) -> list[tuple[str, str]]:
+    """Return list of (display_path, local_file_path).
+
+    Local mode: glob submissions/*.yaml on disk.
+    HF mode: list via submission.list_submission_files, then hf_hub_download
+    each entry.
+    """
+    excluded = {"README.md", "results_template.yaml"}
+    out: list[tuple[str, str]] = []
+    if spec_path is not None:
+        sub_dir = spec_path / "submissions"
+        if not sub_dir.is_dir():
+            return out
+        for p in sorted(sub_dir.glob("*.yaml")):
+            if p.name in excluded:
+                continue
+            out.append((f"submissions/{p.name}", str(p)))
+        return out
+    from .submission import list_submission_files
+    for remote in list_submission_files(repo_id):
+        local = hf_hub_download(
+            repo_id=repo_id, filename=remote, repo_type="dataset"
+        )
+        out.append((remote, local))
+    return out
 
 
 def _check_dataset_side(spec: str) -> tuple[list[CheckResult], dict[str, Any]]:
@@ -271,5 +301,44 @@ def validate_dataset(spec: str, *, skip_submissions: bool = False) -> Validation
     report.dataset_checks = dataset_checks
     if skip_submissions:
         return report
-    # Submission checks (S1–S4) land in Task 5.
+    from . import submission as sub_mod
+    for display_path, local_path in _list_submission_paths(
+        spec_path=info["local_path"], repo_id=info["canonical_id"]
+    ):
+        sr = SubmissionReport(path=display_path)
+        # S1: schema
+        try:
+            text = Path(local_path).read_text()
+            data = sub_mod.parse_submission(text)
+            sr.checks.append(CheckResult("S1", True, "schema ok"))
+        except Exception as e:
+            sr.checks.append(CheckResult("S1", False, str(e)))
+            sr.checks.append(CheckResult("S2", False, "skipped (S1 failed)"))
+            sr.checks.append(CheckResult("S3", False, "skipped (S1 failed)"))
+            sr.checks.append(CheckResult("S4", False, "skipped (S1 failed)"))
+            report.submission_reports.append(sr)
+            continue
+        # S2: reproduction block (already required by schema, kept explicit)
+        repro = data.get("reproduction") or {}
+        if repro:
+            sr.checks.append(CheckResult("S2", True, "reproduction block present"))
+        else:
+            sr.checks.append(CheckResult("S2", False, "reproduction block missing"))
+        # S3 + S4: fetch and sha
+        url = data["artifact"]["scores_url"]
+        claimed_sha = data["artifact"]["scores_sha256"]
+        try:
+            _, observed_sha = hf_fetch.download(url)
+            sr.checks.append(CheckResult("S3", True, "scores_url reachable"))
+            if observed_sha == claimed_sha:
+                sr.checks.append(CheckResult("S4", True, "scores_sha256 matches"))
+            else:
+                sr.checks.append(CheckResult(
+                    "S4", False,
+                    f"sha mismatch: claimed {claimed_sha} got {observed_sha}",
+                ))
+        except Exception as e:
+            sr.checks.append(CheckResult("S3", False, f"scores_url unreachable: {e}"))
+            sr.checks.append(CheckResult("S4", False, "depends on S3"))
+        report.submission_reports.append(sr)
     return report

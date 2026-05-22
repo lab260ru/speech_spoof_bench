@@ -126,3 +126,14 @@ All five Phase 6 checks PASS. Ingest is resilient to per-file YAML errors (one b
 - `cli.py`'s `validate-dataset` is still a Phase 2 stub; full schema/sha/EER drift checks come in Phase 7. The Phase 6 verification ran these checks ad-hoc; Phase 7 should formalize them in `reproduce --scoring`.
 - LA dataset working copy at `/home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA` accumulated 4 smoke-test commits today (bump, revert, broken add, broken remove). They're all on `main`; left as-is for audit trail.
 
+
+## 2026-05-22 - Phase 7b authoring (`submit`, `scaffold-dataset`)
+
+Plan: `docs/plans/2026-05-22-phase-7b-authoring.md`. Spec: `docs/specs/2026-05-22-phase-7b-authoring-design.md`.
+
+- Decision: relaxing `submission.schema.json` so `reproduction: {}` parses (Task 1). Submitter-stage YAMLs must validate but the `reproduction:` block is the maintainer's job per §1.7. The existing `S2` check in `validate.py:321` keeps merged-stage strictness.
+- Decision: `submit` resolves the dataset's current main-branch sha via `HfApi.repo_info` rather than relying on `loader.resolve` (which returns `revision=None` for HF specs today). Used as both `dataset.revision` in the YAML and `parent_commit` for the PR commit.
+- Decision: `--datasets all` expands to `core_set + extended` from the manifest (not just core). Matches the realistic submitter that wants maximum coverage.
+- Decision: silent re-run on revision mismatch in the hybrid path; no `--force-rerun` flag. `result.yaml` is a local artifact, overwrite is harmless.
+- Decision: `submit` requires the model repo to exist; no `create_repo` call.
+- Subagent-driven execution starting now (Tasks 1–10 dispatched, Task 11 manual with user).

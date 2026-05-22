@@ -179,18 +179,25 @@ ds = load_dataset(
     split=yaml["dataset"]["split"],
     streaming=True,
     revision=yaml["dataset"]["revision"],
+    columns=["notes", "label"],  # load-time pushdown — drops audio at parquet level
 )
-ds = ds.select_columns(["notes", "label"])  # drops Audio column at parquet level
 labels: dict[str, int] = {}
 for row in ds:
     notes = json.loads(row["notes"])
     labels[notes["utterance_id"]] = int(row["label"])
 ```
 
-`select_columns(["notes", "label"])` projects at the pyarrow parquet reader,
-which issues HTTP range requests for only those column chunks. Audio bytes
+Passing `columns=["notes", "label"]` at `load_dataset()` time sets
+`ParquetConfig.columns`, which propagates to `ParquetFileFormat.to_batches(columns=...)`.
+This IS a genuine PyArrow column filter at the row-group level — the parquet
+reader issues HTTP range requests for only those column chunks. Audio bytes
 are not requested, not downloaded, not decoded. For ASVspoof2019_LA this is
 a few MB of HTTP traffic.
+
+**Important**: calling `ds.select_columns(["notes", "label"])` post-construction
+is a CPU/memory projection only; the underlying parquet read still pulls every
+column's bytes from the network. Only the load-time `columns=` form achieves
+network-level pushdown.
 
 `streaming=True` is hardcoded in `reproduce.py` — not configurable —
 because non-streaming mode downloads the full parquet shards (including
@@ -327,7 +334,9 @@ tests/
   yield a tiny in-memory iterable of `{notes, label}` dicts. Covers: sha
   mismatch, metric mismatch, unknown metric id, missing utterances,
   `n_trials` mismatch, success. Plus a test that asserts
-  `select_columns(["notes", "label"])` is called before iteration.
+  `load_dataset` receives `columns=["notes", "label"]` at call time (not
+  via post-construction `select_columns`), enforcing the network-level
+  pushdown invariant.
 - **`hf_fetch`**: pure parsing tests for the HF-resolve-URL regex
   (positive + negative cases); one test mocks `hf_hub_download` and
   asserts the `token=` kwarg is forwarded from `HF_TOKEN`.

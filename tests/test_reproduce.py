@@ -43,30 +43,35 @@ def test_scores_parse(tmp_path):
     assert parsed == {"a": 1.0, "b": -0.5}
 
 
-def test_select_columns_called_before_iteration():
-    """Guards the audio-not-downloaded invariant."""
+def test_load_dataset_receives_columns_kwarg():
+    """Guards the audio-not-fetched invariant.
+
+    True column pushdown requires `columns=[...]` at load_dataset time.
+    Post-construction select_columns() does NOT push down to the parquet
+    reader. See implementation-notes for Phase 7a investigation.
+    """
     captured: dict = {}
 
-    class FakeDS:
-        def __init__(self, rows):
-            self._rows = rows
-            self.select_called_with = None
-        def select_columns(self, cols):
-            self.select_called_with = list(cols)
-            captured["select"] = list(cols)
-            return self
-        def __iter__(self):
-            captured["iter_after_select"] = "select" in captured
-            return iter(self._rows)
+    def fake_load_dataset(*args, **kwargs):
+        captured["kwargs"] = kwargs
 
-    fake = FakeDS([
-        {"notes": '{"utterance_id":"a"}', "label": 0},
-        {"notes": '{"utterance_id":"b"}', "label": 1},
-    ])
-    with patch("speech_spoof_bench.reproduce.load_dataset", return_value=fake):
+        class FakeDS:
+            def __iter__(self):
+                return iter([
+                    {"notes": '{"utterance_id":"a"}', "label": 0},
+                    {"notes": '{"utterance_id":"b"}', "label": 1},
+                ])
+
+        return FakeDS()
+
+    with patch("speech_spoof_bench.reproduce.load_dataset",
+               side_effect=fake_load_dataset):
         labels = reproduce._stream_labels("x/y", "test", "deadbeef")
-    assert captured["select"] == ["notes", "label"]
-    assert captured["iter_after_select"] is True
+
+    assert captured["kwargs"].get("columns") == ["notes", "label"]
+    assert captured["kwargs"].get("streaming") is True
+    assert captured["kwargs"].get("revision") == "deadbeef"
+    assert captured["kwargs"].get("split") == "test"
     assert labels == {"a": 0, "b": 1}
 
 

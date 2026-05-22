@@ -34,15 +34,23 @@ def _parse_scores_txt(path: Path) -> dict[str, float]:
 def _stream_labels(dataset_id: str, split: str, revision: str) -> dict[str, int]:
     """Stream labels-only from the pinned dataset revision.
 
-    Calls IterableDataset.select_columns(["notes", "label"]) BEFORE iteration
-    so the audio column is projected away at the parquet reader. No audio
-    bytes are fetched, no decode happens. This is the only correct invocation
-    pattern — see spec §6.2.
+    Passes ``columns=["notes", "label"]`` to ``load_dataset`` so the parquet
+    builder's ``ParquetConfig.columns`` is set. This propagates to
+    ``ParquetFileFormat.to_batches(columns=...)``, which IS a true PyArrow
+    column projection — only those column chunks are read from each row
+    group. Audio column bytes are not transferred.
+
+    Critical: passing columns post-construction via ``ds.select_columns(...)``
+    is a CPU/memory projection only; the parquet read still pulls every
+    column's bytes. Only the load-time form achieves network-level pushdown.
     """
     ds = load_dataset(
-        dataset_id, split=split, streaming=True, revision=revision
+        dataset_id,
+        split=split,
+        streaming=True,
+        revision=revision,
+        columns=["notes", "label"],
     )
-    ds = ds.select_columns(["notes", "label"])
     labels: dict[str, int] = {}
     for row in ds:
         note = json.loads(row["notes"])

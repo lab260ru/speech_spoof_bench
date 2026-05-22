@@ -93,3 +93,29 @@ def test_skip_submissions_flag(synth_local_dataset):
         str(synth_local_dataset), skip_submissions=True
     )
     assert report.submission_reports == []
+
+
+def test_list_submission_paths_local(tmp_path):
+    sub = tmp_path / "submissions"
+    sub.mkdir()
+    (sub / "valid_one.yaml").write_text("placeholder")
+    (sub / "valid_two.yaml").write_text("placeholder")
+    (sub / "README.md").write_text("readme")
+    (sub / "results_template.yaml").write_text("template")
+    (sub / "not_a_yaml.txt").write_text("nope")
+
+    result = validate._list_submission_paths(spec_path=tmp_path, repo_id=None)
+
+    assert len(result) == 2
+    display_paths = sorted(d for d, _ in result)
+    assert display_paths == [
+        "submissions/valid_one.yaml",
+        "submissions/valid_two.yaml",
+    ]
+    for _, local in result:
+        assert Path(local).is_file()
+
+
+def test_list_submission_paths_no_submissions_dir(tmp_path):
+    result = validate._list_submission_paths(spec_path=tmp_path, repo_id=None)
+    assert result == []

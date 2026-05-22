@@ -16,6 +16,7 @@ from datasets import ClassLabel
 from huggingface_hub import hf_hub_download
 
 from . import hf_fetch
+from . import submission as sub_mod
 from .loader import resolve
 
 REQUIRED_README_KEYS = {
@@ -124,8 +125,7 @@ def _list_submission_paths(
                 continue
             out.append((f"submissions/{p.name}", str(p)))
         return out
-    from .submission import list_submission_files
-    for remote in list_submission_files(repo_id):
+    for remote in sub_mod.list_submission_files(repo_id):
         local = hf_hub_download(
             repo_id=repo_id, filename=remote, repo_type="dataset"
         )
@@ -301,7 +301,6 @@ def validate_dataset(spec: str, *, skip_submissions: bool = False) -> Validation
     report.dataset_checks = dataset_checks
     if skip_submissions:
         return report
-    from . import submission as sub_mod
     for display_path, local_path in _list_submission_paths(
         spec_path=info["local_path"], repo_id=info["canonical_id"]
     ):

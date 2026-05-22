@@ -152,15 +152,34 @@ If any of these fail: fix before proceeding. Do not add more datasets, models, o
 
 ---
 
-## Phase 7 — Pip package fills in: `submit`, `validate-dataset`, `reproduce`, `scaffold-dataset`
+## Phase 7a — Validators (offline + maintainer gate)
+
+**Goal**: maintainer-side and submitter-side validation tools. No HF write
+operations. Provides the gate the spec marks mandatory before merging any
+submission (§1.7).
+
+Spec: `docs/specs/2026-05-22-phase-7a-validators-design.md`.
+
+- [ ] `validate-submission <yaml>` — standalone schema check, no network (§1.6 / §2.5).
+- [ ] `validate-dataset <repo-or-path> [--skip-submissions]` — full §1.9 checks: schema, sample rate, uniqueness, README frontmatter, eval.yaml shape + metric registry, plus per-submission schema + `scores_url` reachability + sha verification. Aggregating report.
+- [ ] `reproduce --scoring <yaml> [--tolerance]` — fetches `scores_url`, verifies sha, streams labels from pinned dataset revision (no audio decode via `select_columns`), recomputes every registered metric, diffs against claimed values.
+- [ ] `reproduce --inference` wired as `NotImplementedError` (lands in Phase 8).
+
+**Done when**: `reproduce --scoring submissions/random-baseline.yaml` on the live LA submission exits 0; `validate-dataset SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA` exits 0 with all checks green.
+
+**Deferred** (do later, not blocking):
+- `reproduce --scoring <repo>@<ref>:<file>` — fetch a submission YAML directly from an HF dataset PR branch instead of requiring a local checkout.
+
+---
+
+## Phase 7b — Authoring (`submit`, `scaffold-dataset`)
 
 **Goal**: humans no longer hand-author submission YAMLs.
 
-- [ ] `validate-dataset` — full §1.9 checks (schema, sample rate, uniqueness, frontmatter, eval.yaml shape, submission YAML schema incl. `scores_url` reachability + sha + paper checks).
-- [ ] `reproduce --scoring` — given a submission YAML, fetches `scores_url`, verifies sha, recomputes EER, compares to claimed value.
+Spec: TBD (own brainstorming cycle once 7a lands).
+
 - [ ] `submit` (§2.5a) — one command: run + upload scores to model repo + build YAML + open HF PR on dataset repo.
 - [ ] `scaffold-dataset` (§2.5, §3.8 step 1) — produces the skeleton for a new dataset repo.
-- [ ] `validate <submission.yaml>` — standalone schema check (no HF round-trip).
 
 **Done when**: `speech-spoof-bench submit --model-module speech_spoof_bench.examples.random_baseline:RandomBaseline --model-repo <you>/random-baseline-asas` opens a PR on LA that contains a valid v4 submission YAML. Manual merge → Arena reflects it on next Refresh.
 
@@ -253,7 +272,8 @@ When ready:
 | 4 | Manifest | YAML on HF | 0.5 day |
 | 5 | Arena MVP (no webhook) | Live Space | 3–4 days |
 | **6** | **Smoke test ✅** | **Verified end-to-end** | **0.5 day** |
-| 7 | `submit` / `validate` / `reproduce` | CLI complete | 3–5 days |
+| 7a | Validators (`validate-submission`, `validate-dataset`, `reproduce --scoring`) | Maintainer gate | 2–3 days |
+| 7b | Authoring (`submit`, `scaffold-dataset`) | CLI complete | 2–3 days |
 | 8 | CI/CD layer | Auto-validating PRs | 4–6 days |
 | 9 | Badge layer | Backlink badges live | 1–2 days |
 | 10 | Arena polish | Full UX | 2–3 days |

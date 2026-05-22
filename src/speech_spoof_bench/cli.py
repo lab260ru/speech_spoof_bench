@@ -84,6 +84,25 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_validate_submission(args: argparse.Namespace) -> int:
+    from . import submission
+    path = args.path
+    try:
+        text = open(path).read()
+        submission.parse_submission(text)
+    except FileNotFoundError as e:
+        print(f"FAIL {path}: {e}", file=sys.stderr)
+        return 1
+    except submission.SubmissionValidationError as e:
+        print(f"FAIL {path}: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"FAIL {path}: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+    print(f"OK: {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="speech-spoof-bench")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -110,6 +129,13 @@ def build_parser() -> argparse.ArgumentParser:
                         help="quick check that a dataset loads with the v4 schema")
     vd.add_argument("spec", help="local dir path or org/name HF repo id")
     vd.set_defaults(func=_cmd_validate_dataset)
+
+    vs = sub.add_parser(
+        "validate-submission",
+        help="schema-check a submission YAML offline (no network)",
+    )
+    vs.add_argument("path", help="path to a submission YAML file")
+    vs.set_defaults(func=_cmd_validate_submission)
 
     return p
 

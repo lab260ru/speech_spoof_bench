@@ -20,7 +20,7 @@ def test_valid(capsys):
 @pytest.mark.parametrize(
     "name",
     [
-        "invalid_no_reproduction.yaml",
+        "invalid_partial_reproduction.yaml",
         "invalid_unpinned_url.yaml",
         "invalid_bad_sha.yaml",
         "invalid_bad_slug.yaml",

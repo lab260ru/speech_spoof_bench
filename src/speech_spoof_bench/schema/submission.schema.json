@@ -3,7 +3,7 @@
   "title": "speech-spoof-bench submission (v4)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "system", "dataset", "scores", "artifact", "reproduction", "submitter", "submitted_at"],
+  "required": ["schema_version", "system", "dataset", "scores", "artifact", "submitter", "submitted_at"],
   "properties": {
     "schema_version": {"type": "integer", "const": 4},
     "system": {
@@ -64,15 +64,20 @@
       }
     },
     "reproduction": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["reproduced_by", "reproduced_at", "reproduced_bench_version", "match"],
-      "properties": {
-        "reproduced_by": {"type": "string", "minLength": 1},
-        "reproduced_at": {"type": "string", "format": "date"},
-        "reproduced_bench_version": {"type": "string", "minLength": 1},
-        "match": {"enum": ["scoring", "inference"]}
-      }
+      "oneOf": [
+        {"type": "object", "additionalProperties": false, "properties": {}, "maxProperties": 0},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reproduced_by", "reproduced_at", "reproduced_bench_version", "match"],
+          "properties": {
+            "reproduced_by": {"type": "string", "minLength": 1},
+            "reproduced_at": {"type": "string", "format": "date"},
+            "reproduced_bench_version": {"type": "string", "minLength": 1},
+            "match": {"enum": ["scoring", "inference"]}
+          }
+        }
+      ]
     },
     "submitter": {
       "type": "object",

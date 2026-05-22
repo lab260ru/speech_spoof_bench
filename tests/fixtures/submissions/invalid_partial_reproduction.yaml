@@ -1,0 +1,32 @@
+schema_version: 4
+system:
+  name: fixture-baseline
+  slug: fixture-baseline
+  description: Test fixture submission.
+  code: https://github.com/example/fixture
+  checkpoint: https://huggingface.co/example/fixture
+  paper:
+    arxiv_id: "1234.56789"
+    url: https://arxiv.org/abs/1234.56789
+    bibtex: |
+      @article{fixture, title={t}, author={a}, year={2026}}
+dataset:
+  id: SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
+  revision: 151aa4c6
+  split: test
+scores:
+  eer_percent: 25.0
+  n_trials: 4
+  n_skipped: 0
+artifact:
+  scores_url: https://huggingface.co/example/fixture/resolve/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/scores.txt
+  scores_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+  bench_version: speech-spoof-bench==0.1.0
+reproduction:
+  reproduced_by: fixture-org
+  # missing: reproduced_at, reproduced_bench_version, match
+submitter:
+  hf_username: fixture
+  contact: fixture@example.com
+submitted_at: 2026-05-22
+notes: ""

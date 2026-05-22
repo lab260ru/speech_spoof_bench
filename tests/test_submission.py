@@ -58,11 +58,19 @@ def test_parse_submission_returns_dict_for_valid_yaml():
     assert sub["scores"]["eer_percent"] == 49.87
 
 
-def test_parse_submission_rejects_missing_reproduction():
-    bad = yaml.safe_load(VALID_YAML)
-    del bad["reproduction"]
-    with pytest.raises(SubmissionValidationError):
-        parse_submission(yaml.safe_dump(bad))
+def test_parse_submission_accepts_missing_reproduction():
+    # reproduction is optional at submit time; maintainer fills it at merge time
+    data = yaml.safe_load(VALID_YAML)
+    del data["reproduction"]
+    result = parse_submission(yaml.safe_dump(data))
+    assert result.get("reproduction", {}) in ({}, None)
+
+
+def test_parse_submission_accepts_empty_reproduction():
+    data = yaml.safe_load(VALID_YAML)
+    data["reproduction"] = {}
+    result = parse_submission(yaml.safe_dump(data))
+    assert result["reproduction"] == {}
 
 
 def test_parse_submission_rejects_unpinned_scores_url():

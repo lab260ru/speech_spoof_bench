@@ -170,24 +170,27 @@ def _check_dataset_side(spec: str) -> tuple[list[CheckResult], dict[str, Any]]:
     d4_failed = False
     d4_msg = ""
     sampled_for_d4 = 0
+    # IterableDataset is single-pass: the `ds` above was exhausted by
+    # next(iter(ds)) for D1/D3. Re-resolve to get a fresh iterator.
     try:
         for row in resolve(spec, streaming=True)[1]:
-            if sampled_for_d4 < 100:
-                try:
-                    note = json.loads(row["notes"])
-                except Exception as e:
+            raw_notes = row.get("notes")
+            note: dict | None = None
+            try:
+                note = json.loads(raw_notes) if raw_notes is not None else None
+            except Exception as e:
+                if sampled_for_d4 < 100 and not d4_failed:
                     d4_failed = True
                     d4_msg = f"notes JSON decode error: {e}"
-                else:
-                    if not note.get("utterance_id"):
-                        d4_failed = True
-                        d4_msg = "notes missing non-empty utterance_id"
+                note = None
+            if sampled_for_d4 < 100 and not d4_failed and note is not None:
+                if not note.get("utterance_id"):
+                    d4_failed = True
+                    d4_msg = "notes missing non-empty utterance_id"
+            if sampled_for_d4 < 100:
                 sampled_for_d4 += 1
-            try:
-                note = json.loads(row["notes"])
-                uid = note.get("utterance_id")
-            except Exception:
-                uid = None
+
+            uid = note.get("utterance_id") if isinstance(note, dict) else None
             if uid:
                 if uid in utt_ids:
                     dup_utt.add(uid)
@@ -250,14 +253,20 @@ def validate_dataset(spec: str, *, skip_submissions: bool = False) -> Validation
     report = ValidationReport(dataset_spec=spec)
     try:
         dataset_checks, info = _check_dataset_side(spec)
-    except Exception as e:
-        # Catch the case where resolve() itself raises (e.g., D7 unregistered
-        # metric raises KeyError before any check runs). Surface as D7 fail.
+    except KeyError as e:
+        # loader.py's _parse_eval_yaml raises KeyError("metric id 'X' not
+        # registered (from <path>)") when eval.yaml references an unknown
+        # metric. We surface this as a D7 failure rather than propagating.
+        # If the loader's message format ever changes, the substring check
+        # below will silently fail — keep these in sync.
         msg = str(e)
-        if "metric" in msg.lower() and "not registered" in msg.lower():
+        if "not registered" in msg:
             report.dataset_checks.append(CheckResult("D7", False, msg))
         else:
             report.dataset_checks.append(CheckResult("D0", False, f"load error: {e}"))
+        return report
+    except Exception as e:
+        report.dataset_checks.append(CheckResult("D0", False, f"load error: {e}"))
         return report
     report.dataset_checks = dataset_checks
     if skip_submissions:

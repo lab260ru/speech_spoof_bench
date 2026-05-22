@@ -160,10 +160,10 @@ submission (§1.7).
 
 Spec: `docs/specs/2026-05-22-phase-7a-validators-design.md`.
 
-- [ ] `validate-submission <yaml>` — standalone schema check, no network (§1.6 / §2.5).
-- [ ] `validate-dataset <repo-or-path> [--skip-submissions]` — full §1.9 checks: schema, sample rate, uniqueness, README frontmatter, eval.yaml shape + metric registry, plus per-submission schema + `scores_url` reachability + sha verification. Aggregating report.
-- [ ] `reproduce --scoring <yaml> [--tolerance]` — fetches `scores_url`, verifies sha, streams labels from pinned dataset revision (no audio decode via `select_columns`), recomputes every registered metric, diffs against claimed values.
-- [ ] `reproduce --inference` wired as `NotImplementedError` (lands in Phase 8).
+- [x] `validate-submission <yaml>` — standalone schema check, no network (§1.6 / §2.5).
+- [x] `validate-dataset <repo-or-path> [--skip-submissions]` — full §1.9 checks: schema, sample rate, uniqueness, README frontmatter, eval.yaml shape + metric registry, plus per-submission schema + `scores_url` reachability + sha verification. Aggregating report.
+- [x] `reproduce --scoring <yaml> [--tolerance]` — fetches `scores_url`, verifies sha, streams labels from pinned dataset revision (no audio decode via `select_columns`), recomputes every registered metric, diffs against claimed values.
+- [x] `reproduce --inference` wired as `NotImplementedError` (lands in Phase 8).
 
 **Done when**: `reproduce --scoring submissions/random-baseline.yaml` on the live LA submission exits 0; `validate-dataset SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA` exits 0 with all checks green.
 

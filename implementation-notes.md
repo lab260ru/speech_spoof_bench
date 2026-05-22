@@ -2,6 +2,40 @@
 
 Running notes captured during implementation of project specs/plans. Decisions, assumptions, tradeoffs, and deviations from the spec land here.
 
+## 2026-05-22 — Phase 7a validators
+
+- Plan: `docs/plans/2026-05-22-phase-7a-validators.md`
+- Spec: `docs/specs/2026-05-22-phase-7a-validators-design.md`
+- Branch: `main` (user opted to stay on main per project convention)
+- Execution mode: subagent-driven (fresh subagent per task + spec/quality review)
+- Decision: Phase 7 split into 7a (validators, this cycle) and 7b (authoring tools — `submit`, `scaffold-dataset`, own brainstorming cycle later). Captured in ROADMAP. The split keeps validator work tight; `submit` is a different beast (HF writes, PR creation, auth).
+- Decision: One deferred item carried under 7a in ROADMAP — `reproduce --scoring <repo>@<ref>:<file>` (fetch YAML directly from an HF dataset PR branch). Local-path only at launch.
+
+### Task 4 — validate.py D1-D7 follow-up
+
+- Changed: Code-quality reviewer caught three real issues post-implementation. Fixed in `8a45d55` on top of `c1a66b5`: (a) the D4/D5 streaming loop was parsing `row["notes"]` twice per row (once for D4 sampling, once for D5 uid) — collapsed to a single parse with cached `note` variable; (b) added a comment above the second `resolve(spec, streaming=True)` call inside `_check_dataset_side` explaining `IterableDataset` is single-pass and the first `ds` was already exhausted by D1/D3's `next(iter(ds))`; (c) narrowed the D7 fallback exception handler from `except Exception` to `except KeyError` with an explicit comment documenting the dependency on `loader.py`'s `"metric id 'X' not registered"` wording.
+- Changed: Plan had `README.md` frontmatter with `tags:` before `arxiv:`. After `test_d6_missing_arena_ready_tag` deletes the `- arena-ready\n` line, the resulting YAML had `tags:` with no list items immediately followed by `arxiv:` as a mapping — which is valid YAML but fragile. Reordered in conftest so `arxiv:` precedes `tags:`; the test removal now leaves `tags: [- anti-spoofing]` standing cleanly. Doesn't change spec — `tags` and `arxiv` order is arbitrary per §1.4.
+
+### Task 5 — validate.py S1-S4
+
+- Changed: Plan's `test_submission_sha_mismatch` used `wrong_sha = "0" * 64`, which collides with the `tests/fixtures/submissions/valid.yaml` fixture's actual `scores_sha256` (also 64 zeros). The mock would have returned an "observed" sha that equaled the "claimed" sha, making the test pass for the wrong reason. Implementer used `"a" * 64` instead.
+
+### Task 11 — integration test
+
+- Validation: The integration test `tests/test_reproduce_integration.py` was authored exactly per spec and committed (`96c903b`). The implementer verified the EER invariant via a local fast path (claimed = recomputed = 49.870836165873556, Δ = 0.0e+00) and confirmed the HF cache grew by only ~144KB (well under the <50 MB ceiling), so `select_columns(["notes", "label"])` is in fact pushing column projection down.
+- Follow-up: The live integration test did not complete end-to-end on this machine because HF traffic is tunneled through a SOCKS proxy at `127.0.0.1:1080` with ~467 KB/s sustained throughput. The test will pass on any machine with normal HF CDN bandwidth (30-120s expected). On this machine, the test runs the full coverage scan, which transfers more bytes than expected — worth investigating in a separate pass whether HF parquet streaming under fsspec actually pushes pyarrow column projection down to the network layer, or whether it reads more than the projected columns.
+
+### Phase 7a follow-up (post-implementation)
+
+- Decision: investigated the network-byte claim from Task 11. Code-traced the HF `datasets` library — `IterableDataset.select_columns([...])` is a POST-READ projection only: the underlying `_generate_tables` is called with `columns=None`, so PyArrow reads every column chunk (including the audio binary column) from each parquet row group, then `pa_table.select([...])` drops them in memory. Audio bytes ARE transferred over the network. The "audio not downloaded" guarantee held by the spec was inaccurate.
+- Changed (commit `448bcf3`): switched `reproduce.py::_stream_labels` from `ds.select_columns(["notes", "label"])` to passing `columns=["notes", "label"]` at `load_dataset()` time. This sets `ParquetConfig.columns`, propagates to `ParquetFileFormat.to_batches(columns=...)`, and IS a genuine column projection at the parquet reader — only those column chunks are fetched over the wire. The unit test was renamed and rewritten to assert the kwarg goes through `load_dataset`, not through a post-construction `select_columns` call.
+- Changed: spec doc §6.2 and §8.2 updated to reflect load-time `columns=` form. Distinction between true network-level pushdown and post-read CPU projection is now explicit.
+- Validation: 85/85 unit tests pass. The integration test's HF-cache assertion now actually measures something meaningful — with true pushdown, the cache should grow by only a few MB even on slow networks.
+
+### Phase 7a follow-up (post-implementation cleanup)
+
+- Changed (commit `e68e950`): hoisted `from . import submission as sub_mod` from the body of `validate_dataset` to the top-of-file imports. No circular import (`submission.py` does not depend on `validate.py`). Also added two direct unit tests for `_list_submission_paths` local branch (one happy, one missing-submissions-dir).
+
 ## 2026-05-21 — Phase 2 pip skeleton with local dataset loading
 
 - Plan: `docs/plans/2026-05-21-phase-2-pip-skeleton.md`

@@ -17,6 +17,7 @@ from pathlib import Path
 from datasets import load_dataset
 
 from . import hf_fetch, submission
+from .metrics import get_metric
 
 
 def _parse_scores_txt(path: Path) -> dict[str, float]:
@@ -125,5 +126,52 @@ def run_scoring(
         )
         return 1
 
-    # Task 9: metric recomputation.
+    metric_keys = [
+        k for k in data["scores"]
+        if k not in {"n_trials", "n_skipped"}
+    ]
+    if not metric_keys:
+        print("FAIL: no metrics in submission.scores to recompute",
+              file=sys.stderr)
+        return 1
+
+    scores_subset = {k: scores[k] for k in scored_ids if k in label_ids}
+    labels_subset = {k: labels[k] for k in scores_subset}
+
+    diffs: list[tuple[str, float, float]] = []
+    for mid in metric_keys:
+        try:
+            spec = get_metric(mid)
+        except KeyError:
+            print(
+                f"FAIL: metric {mid!r} not registered in this version of "
+                f"speech-spoof-bench",
+                file=sys.stderr,
+            )
+            return 1
+        result = spec.fn(scores_subset, labels_subset)
+        claimed = float(data["scores"][mid])
+        if abs(result.value - claimed) > tolerance:
+            print(
+                f"FAIL: metric {mid!r}: claimed {claimed!r} recomputed "
+                f"{result.value!r} (Δ {result.value - claimed:.3e}, "
+                f"tolerance {tolerance:.0e})",
+                file=sys.stderr,
+            )
+            return 1
+        diffs.append((mid, claimed, result.value))
+
+    sha_short = claimed_sha[:4] + "…" + claimed_sha[-4:]
+    rev = data["dataset"]["revision"]
+    print(f"OK reproduced: {data['dataset']['id']} @ {rev}")
+    print(f"  scores_sha256: matched ({sha_short})")
+    for mid, claimed, recomputed in diffs:
+        delta = recomputed - claimed
+        print(
+            f"  {mid}: claimed {claimed!r}  recomputed {recomputed!r}  "
+            f"(Δ {delta:.1e})"
+        )
+    print(
+        f"  n_trials:      {n_trials_claim} (skipped {n_skipped_claim})"
+    )
     return 0

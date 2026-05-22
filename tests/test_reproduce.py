@@ -99,3 +99,79 @@ def test_n_trials_mismatch(tmp_path):
                return_value=(scores, sha)):
         rc = reproduce.run_scoring(p, label_stream=lambda *a, **k: fake_labels)
     assert rc == 1
+
+
+def test_metric_match_success(tmp_path, capsys):
+    scores_src = (FIX / "scores_known.txt").read_text()
+    scores = tmp_path / "s.txt"
+    scores.write_text(scores_src)
+    sha = hashlib.sha256(scores.read_bytes()).hexdigest()
+
+    # Compute the EER the metric will produce, then pin it in the YAML.
+    from speech_spoof_bench.metrics import get_metric
+    parsed = {}
+    for line in scores_src.splitlines():
+        if line.strip():
+            utt, s = line.split()
+            parsed[utt] = float(s)
+    labels = {"UTT_0000": 0, "UTT_0001": 1, "UTT_0002": 0, "UTT_0003": 1}
+    expected = get_metric("eer_percent").fn(parsed, labels).value
+
+    src = (FIX / "submissions" / "valid.yaml").read_text()
+    data = yaml.safe_load(src)
+    data["artifact"]["scores_sha256"] = sha
+    data["scores"] = {
+        "eer_percent": expected,
+        "n_trials": 4,
+        "n_skipped": 0,
+    }
+    p = tmp_path / "submission.yaml"
+    p.write_text(yaml.safe_dump(data))
+
+    with patch("speech_spoof_bench.reproduce.hf_fetch.download",
+               return_value=(scores, sha)):
+        rc = reproduce.run_scoring(p, label_stream=lambda *a, **k: labels)
+    out = capsys.readouterr().out
+    assert rc == 0, out
+    assert "OK reproduced" in out
+    assert "eer_percent" in out
+
+
+def test_metric_mismatch(tmp_path):
+    scores_src = (FIX / "scores_known.txt").read_text()
+    scores = tmp_path / "s.txt"
+    scores.write_text(scores_src)
+    sha = hashlib.sha256(scores.read_bytes()).hexdigest()
+    labels = {"UTT_0000": 0, "UTT_0001": 1, "UTT_0002": 0, "UTT_0003": 1}
+
+    src = (FIX / "submissions" / "valid.yaml").read_text()
+    data = yaml.safe_load(src)
+    data["artifact"]["scores_sha256"] = sha
+    data["scores"] = {"eer_percent": 0.0, "n_trials": 4, "n_skipped": 0}
+    p = tmp_path / "submission.yaml"
+    p.write_text(yaml.safe_dump(data))
+
+    with patch("speech_spoof_bench.reproduce.hf_fetch.download",
+               return_value=(scores, sha)):
+        rc = reproduce.run_scoring(p, label_stream=lambda *a, **k: labels)
+    assert rc == 1
+
+
+def test_unknown_metric(tmp_path):
+    scores_src = (FIX / "scores_known.txt").read_text()
+    scores = tmp_path / "s.txt"
+    scores.write_text(scores_src)
+    sha = hashlib.sha256(scores.read_bytes()).hexdigest()
+    labels = {"UTT_0000": 0, "UTT_0001": 1, "UTT_0002": 0, "UTT_0003": 1}
+
+    src = (FIX / "submissions" / "valid.yaml").read_text()
+    data = yaml.safe_load(src)
+    data["artifact"]["scores_sha256"] = sha
+    data["scores"] = {"made_up_metric": 1.23, "n_trials": 4, "n_skipped": 0}
+    p = tmp_path / "submission.yaml"
+    p.write_text(yaml.safe_dump(data))
+
+    with patch("speech_spoof_bench.reproduce.hf_fetch.download",
+               return_value=(scores, sha)):
+        rc = reproduce.run_scoring(p, label_stream=lambda *a, **k: labels)
+    assert rc == 1

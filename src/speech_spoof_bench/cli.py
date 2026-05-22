@@ -74,6 +74,13 @@ def _cmd_manifest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_reproduce(args: argparse.Namespace) -> int:
+    if args.inference:
+        raise NotImplementedError("reproduce --inference lands in Phase 7b/8")
+    from . import reproduce
+    return reproduce.run_scoring(args.path, tolerance=args.tolerance)
+
+
 def _cmd_validate_submission(args: argparse.Namespace) -> int:
     from . import submission
     path = args.path
@@ -130,6 +137,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vs.add_argument("path", help="path to a submission YAML file")
     vs.set_defaults(func=_cmd_validate_submission)
+
+    rp = sub.add_parser(
+        "reproduce",
+        help="reproduce a submission's scores (--scoring) or "
+             "full inference (--inference)",
+    )
+    rp.add_argument("path", help="path to a submission YAML file")
+    rp.add_argument("--tolerance", type=float, default=1e-6,
+                    help="metric tolerance for --scoring (default 1e-6)")
+    mode = rp.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--scoring", action="store_true",
+                      help="verify scores_url sha + recompute metrics")
+    mode.add_argument("--inference", action="store_true",
+                      help="full re-inference (Phase 8+; not yet implemented)")
+    rp.set_defaults(func=_cmd_reproduce)
 
     return p
 

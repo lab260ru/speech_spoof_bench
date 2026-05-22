@@ -41,3 +41,61 @@ def test_scores_parse(tmp_path):
     p.write_text("a 1.0\nb -0.5\n\n")
     parsed = reproduce._parse_scores_txt(p)
     assert parsed == {"a": 1.0, "b": -0.5}
+
+
+def test_select_columns_called_before_iteration():
+    """Guards the audio-not-downloaded invariant."""
+    captured: dict = {}
+
+    class FakeDS:
+        def __init__(self, rows):
+            self._rows = rows
+            self.select_called_with = None
+        def select_columns(self, cols):
+            self.select_called_with = list(cols)
+            captured["select"] = list(cols)
+            return self
+        def __iter__(self):
+            captured["iter_after_select"] = "select" in captured
+            return iter(self._rows)
+
+    fake = FakeDS([
+        {"notes": '{"utterance_id":"a"}', "label": 0},
+        {"notes": '{"utterance_id":"b"}', "label": 1},
+    ])
+    with patch("speech_spoof_bench.reproduce.load_dataset", return_value=fake):
+        labels = reproduce._stream_labels("x/y", "test", "deadbeef")
+    assert captured["select"] == ["notes", "label"]
+    assert captured["iter_after_select"] is True
+    assert labels == {"a": 0, "b": 1}
+
+
+def test_coverage_missing_in_dataset(tmp_path):
+    scores = tmp_path / "s.txt"
+    scores.write_text("UTT_0000 1.0\nGHOST 0.0\n")
+    sha = hashlib.sha256(scores.read_bytes()).hexdigest()
+    yaml_path = _patch_yaml(tmp_path, scores, sha)
+    fake_labels = {"UTT_0000": 0, "UTT_0001": 1}
+    with patch("speech_spoof_bench.reproduce.hf_fetch.download",
+               return_value=(scores, sha)):
+        rc = reproduce.run_scoring(
+            yaml_path, label_stream=lambda *a, **k: fake_labels
+        )
+    assert rc == 1
+
+
+def test_n_trials_mismatch(tmp_path):
+    scores = tmp_path / "s.txt"
+    scores.write_text("UTT_0000 1.0\n")
+    sha = hashlib.sha256(scores.read_bytes()).hexdigest()
+    src = (FIX / "submissions" / "valid.yaml").read_text()
+    data = yaml.safe_load(src)
+    data["artifact"]["scores_sha256"] = sha
+    data["scores"] = {"eer_percent": 25.0, "n_trials": 999, "n_skipped": 0}
+    p = tmp_path / "submission.yaml"
+    p.write_text(yaml.safe_dump(data))
+    fake_labels = {"UTT_0000": 0}
+    with patch("speech_spoof_bench.reproduce.hf_fetch.download",
+               return_value=(scores, sha)):
+        rc = reproduce.run_scoring(p, label_stream=lambda *a, **k: fake_labels)
+    assert rc == 1

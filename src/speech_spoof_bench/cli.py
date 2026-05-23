@@ -82,7 +82,9 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
     if args.inference:
         raise NotImplementedError("reproduce --inference lands in Phase 7b/8")
     from . import reproduce
-    return reproduce.run_scoring(args.path, tolerance=args.tolerance)
+    return reproduce.run_scoring(
+        args.path, tolerance=args.tolerance, force_remote=args.no_local,
+    )
 
 
 def _cmd_validate_submission(args: argparse.Namespace) -> int:

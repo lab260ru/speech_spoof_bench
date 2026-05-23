@@ -180,3 +180,63 @@ def test_unknown_metric(tmp_path):
                return_value=(scores, sha)):
         rc = reproduce.run_scoring(p, label_stream=lambda *a, **k: labels)
     assert rc == 1
+
+
+def test_stream_labels_uses_local_registry(monkeypatch, tmp_path):
+    """When dataset_id is mapped locally, _stream_labels reads from local parquet."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from speech_spoof_bench import local_registry as lr
+
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    pq.write_table(
+        pa.table({
+            "path": ["a", "b"],
+            "audio": [b"", b""],
+            "label": [0, 1],
+            "notes": ['{"utterance_id":"u1"}', '{"utterance_id":"u2"}'],
+        }),
+        d / "data" / "test-00000-of-00001.parquet",
+    )
+    (d / "eval.yaml").write_text("name: t\n")
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    lr.set("Org/Foo", d)
+
+    seen = {}
+    def fake_load_dataset(*args, **kwargs):
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        # Return an iterable of two rows that mimic the parquet content.
+        return iter([
+            {"label": 0, "notes": '{"utterance_id":"u1"}'},
+            {"label": 1, "notes": '{"utterance_id":"u2"}'},
+        ])
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+
+    labels = reproduce._stream_labels("Org/Foo", "test", "deadbee")
+    assert labels == {"u1": 0, "u2": 1}
+    # When mapped locally, first positional arg is "parquet", not the dataset id.
+    assert seen["args"][0] == "parquet"
+
+
+def test_stream_labels_force_remote_bypasses_registry(monkeypatch, tmp_path):
+    from speech_spoof_bench import local_registry as lr
+
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    (d / "eval.yaml").write_text("name: t\n")
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    lr.set("Org/Foo", d)
+
+    seen = {}
+    def fake_load_dataset(*args, **kwargs):
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+        return iter([])
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+
+    reproduce._stream_labels("Org/Foo", "test", "deadbee", force_remote=True)
+    # force_remote bypasses the registry → HF code path → first positional is the dataset id.
+    assert seen["args"][0] == "Org/Foo"

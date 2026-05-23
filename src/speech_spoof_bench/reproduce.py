@@ -31,8 +31,14 @@ def _parse_scores_txt(path: Path) -> dict[str, float]:
     return out
 
 
-def _stream_labels(dataset_id: str, split: str, revision: str) -> dict[str, int]:
-    """Stream labels-only from the pinned dataset revision.
+def _stream_labels(
+    dataset_id: str, split: str, revision: str, *, force_remote: bool = False,
+) -> dict[str, int]:
+    """Stream labels-only from the pinned dataset revision (or local copy).
+
+    If `dataset_id` is in the local-dataset registry and `force_remote` is
+    False, reads the labels from local parquet shards. Otherwise streams
+    from HF at the pinned revision.
 
     Passes ``columns=["notes", "label"]`` to ``load_dataset`` so the parquet
     builder's ``ParquetConfig.columns`` is set. This propagates to
@@ -44,13 +50,32 @@ def _stream_labels(dataset_id: str, split: str, revision: str) -> dict[str, int]
     is a CPU/memory projection only; the parquet read still pulls every
     column's bytes. Only the load-time form achieves network-level pushdown.
     """
-    ds = load_dataset(
-        dataset_id,
-        split=split,
-        streaming=True,
-        revision=revision,
-        columns=["notes", "label"],
-    )
+    from . import local_registry
+
+    mapped = None if force_remote else local_registry.lookup(dataset_id)
+    if mapped is not None:
+        import glob
+        shards = sorted(glob.glob(str(mapped / "data" / "test-*.parquet")))
+        if not shards:
+            raise FileNotFoundError(
+                f"{mapped}/data/test-*.parquet not found for {dataset_id}"
+            )
+        ds = load_dataset(
+            "parquet",
+            data_files={"train": shards},
+            split="train",
+            streaming=True,
+            columns=["notes", "label"],
+        )
+    else:
+        ds = load_dataset(
+            dataset_id,
+            split=split,
+            streaming=True,
+            revision=revision,
+            columns=["notes", "label"],
+        )
+
     labels: dict[str, int] = {}
     for row in ds:
         note = json.loads(row["notes"])
@@ -62,6 +87,7 @@ def run_scoring(
     yaml_path: Path | str,
     *,
     tolerance: float = 1e-6,
+    force_remote: bool = False,
     label_stream=None,
 ) -> int:
     """Run --scoring reproduction. Returns exit code (0 success, 1 fail).
@@ -69,7 +95,8 @@ def run_scoring(
     ``label_stream`` is injectable for tests. Defaults to _stream_labels.
     """
     if label_stream is None:
-        label_stream = _stream_labels
+        def label_stream(did, split, rev):
+            return _stream_labels(did, split, rev, force_remote=force_remote)
     yaml_path = Path(yaml_path)
     try:
         data = submission.parse_submission(yaml_path.read_text())

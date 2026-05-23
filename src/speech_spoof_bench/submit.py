@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from huggingface_hub import HfApi
 from jsonschema import ValidationError, validate
 
 _META_SCHEMA_PACKAGE = "speech_spoof_bench.data"
@@ -87,3 +88,30 @@ def build_submission_payload(
     if "notes" in meta:
         payload["notes"] = meta["notes"]
     return payload
+
+
+def upload_scores(
+    *,
+    api: HfApi,
+    model_repo: str,
+    dataset_canonical_id: str,
+    local_path: Path | str,
+) -> tuple[str, str]:
+    """Upload scores.txt to the model repo's main branch.
+
+    Returns (scores_url, commit_oid). The URL pins the returned commit oid.
+    """
+    p = Path(local_path)
+    if not p.is_file():
+        raise FileNotFoundError(f"scores file not found: {p}")
+    path_in_repo = f".eval_results/{dataset_canonical_id}/scores.txt"
+    info = api.upload_file(
+        path_or_fileobj=str(p),
+        path_in_repo=path_in_repo,
+        repo_id=model_repo,
+        repo_type="model",
+        commit_message=f"upload scores for {dataset_canonical_id}",
+    )
+    oid = info.oid
+    url = f"https://huggingface.co/{model_repo}/resolve/{oid}/{path_in_repo}"
+    return url, oid

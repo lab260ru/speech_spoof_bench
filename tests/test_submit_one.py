@@ -64,7 +64,7 @@ def fake_hf_api():
 
 def _make_existing_result(tmp_path: Path, slug: str, revision: str) -> Path:
     out = tmp_path / "results" / slug
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
     (out / "scores.txt").write_text("u 1.0\n")
     sha = hashlib.sha256(b"u 1.0\n").hexdigest()
     text = _result_yaml_text(revision).replace("f" * 64, sha)
@@ -112,8 +112,11 @@ def test_submit_one_runs_benchmark_when_result_missing(
 ):
     fake_hf_api.repo_info.return_value.sha = "deadbee"
 
-    def fake_bench_run(*, model_module_spec, dataset_spec, output_dir, **_):
-        _make_existing_result(Path(output_dir), "Org_A", "deadbee")
+    def fake_bench_run(**_):
+        # Materialize the same files Benchmark.run would have created:
+        # output_dir/<slug>/scores.txt + result.yaml. _make_existing_result
+        # adds a leading "results/" so pass tmp_path (parent of output_dir).
+        _make_existing_result(tmp_path, "Org_A", "deadbee")
 
     monkeypatch.setattr(submit_mod, "_run_benchmark", fake_bench_run)
     monkeypatch.setattr(submit_mod, "_resolve_dataset_slug",
@@ -140,9 +143,9 @@ def test_submit_one_reruns_when_revision_mismatch(
 
     bench_called = {"n": 0}
 
-    def fake_bench_run(*, output_dir, **_):
+    def fake_bench_run(**_):
         bench_called["n"] += 1
-        _make_existing_result(Path(output_dir), "Org_A", "newrev1")
+        _make_existing_result(tmp_path, "Org_A", "newrev1")
 
     monkeypatch.setattr(submit_mod, "_run_benchmark", fake_bench_run)
     monkeypatch.setattr(submit_mod, "_resolve_dataset_slug",

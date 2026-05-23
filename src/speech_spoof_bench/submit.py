@@ -222,13 +222,6 @@ def submit_one(
         )
         existing = _read_result_yaml(out_dir)
         if existing is None:
-            # Benchmark.run may have been called with output_dir as its
-            # own base, creating results under output_dir/results/slug.
-            fallback = Path(output_dir) / "results" / slug
-            existing = _read_result_yaml(fallback)
-            if existing is not None:
-                out_dir = fallback
-        if existing is None:
             raise RuntimeError(
                 f"benchmark run produced no result.yaml under {out_dir}"
             )

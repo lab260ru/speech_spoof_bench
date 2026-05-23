@@ -137,8 +137,14 @@ def run_dataset(
         buf_sr.clear()
         buf_label.clear()
 
+    try:
+        total = len(dataset)
+    except TypeError:
+        total = None
+    from tqdm.auto import tqdm
+    progress = tqdm(dataset, total=total, desc=source.slug, unit="utt")
     with scores_path.open("w") as out_f:
-        for row in dataset:
+        for row in progress:
             utt_id, array, sr, label = _extract(row, target_sr)
             buf_utt.append(utt_id)
             buf_audio.append(array)

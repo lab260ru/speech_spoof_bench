@@ -111,6 +111,45 @@ def _cmd_scaffold_dataset(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_local_set(args: argparse.Namespace) -> int:
+    from . import local_registry as lr
+    lr.set(args.dataset_id, args.path)
+    print(f"registered {args.dataset_id} -> {args.path}")
+    return 0
+
+
+def _cmd_local_unset(args: argparse.Namespace) -> int:
+    from . import local_registry as lr
+    lr.unset(args.dataset_id)
+    print(f"unset {args.dataset_id}")
+    return 0
+
+
+def _cmd_local_list(args: argparse.Namespace) -> int:
+    from . import local_registry as lr
+    mapping = lr.load()
+    if not mapping:
+        print("(no local datasets registered)")
+        return 0
+    for did, p in sorted(mapping.items()):
+        print(f"{did}\t{p}")
+    return 0
+
+
+def _cmd_local_show(args: argparse.Namespace) -> int:
+    from . import local_registry as lr
+    try:
+        p = lr.lookup(args.dataset_id)
+    except FileNotFoundError as e:
+        print(f"{args.dataset_id}\tBROKEN: {e}")
+        return 1
+    if p is None:
+        print(f"{args.dataset_id}\tremote (no local registration)")
+    else:
+        print(f"{args.dataset_id}\tlocal: {p}")
+    return 0
+
+
 def _cmd_submit(args: argparse.Namespace) -> int:
     from . import submit as submit_mod
 
@@ -142,6 +181,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-streaming", action="store_true")
     run.add_argument("--no-cleanup", action="store_true")
     run.add_argument("--no-skip-existing", action="store_true")
+    run.add_argument(
+        "--no-local",
+        action="store_true",
+        help="ignore the local-dataset registry; always stream from HF",
+    )
     run.set_defaults(func=_cmd_run)
 
     lst = sub.add_parser("list", help="list datasets in the arena manifest")
@@ -158,6 +202,11 @@ def build_parser() -> argparse.ArgumentParser:
     vd.add_argument("spec", help="local dir path or org/name HF repo id")
     vd.add_argument("--skip-submissions", action="store_true",
                     help="skip per-submission network checks")
+    vd.add_argument(
+        "--no-local",
+        action="store_true",
+        help="ignore the local-dataset registry; always stream from HF",
+    )
     vd.set_defaults(func=_cmd_validate_dataset)
 
     vs = sub.add_parser(
@@ -180,6 +229,11 @@ def build_parser() -> argparse.ArgumentParser:
     sm.add_argument("--contact", required=True)
     sm.add_argument("--output-dir", default="./results", type=Path)
     sm.add_argument("--continue-on-error", action="store_true")
+    sm.add_argument(
+        "--no-local",
+        action="store_true",
+        help="ignore the local-dataset registry; always stream from HF",
+    )
     sm.set_defaults(func=_cmd_submit)
 
     sd = sub.add_parser("scaffold-dataset",
@@ -203,7 +257,34 @@ def build_parser() -> argparse.ArgumentParser:
                       help="verify scores_url sha + recompute metrics")
     mode.add_argument("--inference", action="store_true",
                       help="full re-inference (Phase 8+; not yet implemented)")
+    rp.add_argument(
+        "--no-local",
+        action="store_true",
+        help="ignore the local-dataset registry; always stream from HF",
+    )
     rp.set_defaults(func=_cmd_reproduce)
+
+    loc = sub.add_parser(
+        "local",
+        help="manage the local-dataset registry (speech-spoof-bench/local-datasets.yaml)",
+    )
+    loc_sub = loc.add_subparsers(dest="local_cmd", required=True)
+
+    ls_set = loc_sub.add_parser("set", help="register dataset_id -> local path")
+    ls_set.add_argument("dataset_id")
+    ls_set.add_argument("path")
+    ls_set.set_defaults(func=_cmd_local_set)
+
+    ls_unset = loc_sub.add_parser("unset", help="remove a registration")
+    ls_unset.add_argument("dataset_id")
+    ls_unset.set_defaults(func=_cmd_local_unset)
+
+    ls_list = loc_sub.add_parser("list", help="show all registered mappings")
+    ls_list.set_defaults(func=_cmd_local_list)
+
+    ls_show = loc_sub.add_parser("show", help="show resolution for one dataset id")
+    ls_show.add_argument("dataset_id")
+    ls_show.set_defaults(func=_cmd_local_show)
 
     return p
 

@@ -180,3 +180,46 @@ def test_cli_scaffold_dataset(tmp_path):
     assert rc == 0
     assert (out / "eval.yaml").is_file()
     assert "name: Y" in (out / "eval.yaml").read_text()
+
+
+def test_local_set_and_list(monkeypatch, tmp_path, capsys):
+    from speech_spoof_bench import cli, local_registry as lr
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    (d / "eval.yaml").write_text("name: x\n")
+
+    assert cli.main(["local", "set", "Org/Foo", str(d)]) == 0
+    assert cli.main(["local", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "Org/Foo" in out and str(d) in out
+
+
+def test_local_unset(monkeypatch, tmp_path):
+    from speech_spoof_bench import cli, local_registry as lr
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    (d / "eval.yaml").write_text("name: x\n")
+    lr.set("Org/Foo", d)
+    assert cli.main(["local", "unset", "Org/Foo"]) == 0
+    assert lr.load() == {}
+
+
+def test_local_show_mapped_and_unmapped(monkeypatch, tmp_path, capsys):
+    from speech_spoof_bench import cli, local_registry as lr
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    (d / "eval.yaml").write_text("name: x\n")
+
+    assert cli.main(["local", "show", "Org/Foo"]) == 0
+    assert "remote" in capsys.readouterr().out
+
+    lr.set("Org/Foo", d)
+    assert cli.main(["local", "show", "Org/Foo"]) == 0
+    out = capsys.readouterr().out
+    assert "local" in out and str(d) in out

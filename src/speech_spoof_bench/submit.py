@@ -7,6 +7,7 @@ Public surface (used by cli.py):
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import logging
 from importlib import resources
@@ -268,3 +269,58 @@ def submit_one(
         slug=meta["system"]["slug"],
         yaml_text=yaml_text,
     )
+
+
+def _expand_dataset_specs(specs: list[str]) -> list[str]:
+    """Expand `--datasets all` against the arena manifest (core_set + extended)."""
+    if specs == ["all"]:
+        from . import manifest as _mf
+        m = _mf.fetch_manifest()
+        return [e["id"] for e in m.get("core_set", [])] + [
+            e["id"] for e in m.get("extended", [])
+        ]
+    if "all" in specs:
+        raise ValueError("'--datasets all' must be used alone, not mixed with explicit ids")
+    return list(specs)
+
+
+def submit(
+    *,
+    model_module_spec: str,
+    dataset_specs: list[str],
+    output_dir: Path,
+    meta_path: Path,
+    model_repo: str,
+    hf_username: str,
+    contact: str,
+    continue_on_error: bool = False,
+    api: HfApi | None = None,
+) -> dict[str, str]:
+    """Run `submit_one` for each dataset; return {dataset_spec: pr_url}."""
+    meta = load_meta(meta_path)
+    expanded = _expand_dataset_specs(dataset_specs)
+    api = api or HfApi()
+    submitted_at = _dt.date.today().isoformat()
+
+    results: dict[str, str] = {}
+    for spec in expanded:
+        try:
+            url = submit_one(
+                model_module_spec=model_module_spec,
+                dataset_spec=spec,
+                output_dir=Path(output_dir),
+                meta=meta,
+                model_repo=model_repo,
+                hf_username=hf_username,
+                contact=contact,
+                submitted_at=submitted_at,
+                api=api,
+            )
+            _LOG.info("submitted %s → %s", spec, url)
+            results[spec] = url
+        except Exception as exc:
+            if not continue_on_error:
+                raise
+            _LOG.error("submission failed for %s: %s", spec, exc)
+            results[spec] = f"ERROR: {exc}"
+    return results

@@ -99,3 +99,76 @@ def test_cli_list_prints_core_then_extended(monkeypatch, capsys):
     assert rc == 0
     lines = capsys.readouterr().out.strip().splitlines()
     assert lines == ["[core] Org/A", "[ext]  Org/B"]
+
+
+def test_cli_submit_smoke(monkeypatch, tmp_path):
+    """`submit` wires flags into submit_one for each dataset."""
+    import speech_spoof_bench.submit as submit_mod
+
+    meta_path = tmp_path / "meta.yaml"
+    meta_path.write_text(
+        "system:\n"
+        "  name: RB\n"
+        "  slug: rb\n"
+        "  description: d\n"
+        "  code: https://example.com/c\n"
+        "  checkpoint: https://huggingface.co/Org/rb\n"
+        "  paper:\n"
+        "    arxiv_id: '1911.01601'\n"
+        "    url: https://arxiv.org/abs/1911.01601\n"
+        "    bibtex: '@x{}'\n"
+    )
+
+    calls = []
+
+    def fake_submit_one(**kwargs):
+        calls.append(kwargs["dataset_spec"])
+        return f"https://huggingface.co/datasets/{kwargs['dataset_spec']}/discussions/1"
+
+    monkeypatch.setattr(submit_mod, "submit_one", fake_submit_one)
+
+    rc = main([
+        "submit",
+        "--model-module", "x:Y",
+        "--datasets", "Org/A",
+        "--datasets", "Org/B",
+        "--model-repo", "Org/rb",
+        "--submission-meta", str(meta_path),
+        "--hf-username", "u",
+        "--contact", "c@example.com",
+        "--output-dir", str(tmp_path / "results"),
+    ])
+    assert rc == 0
+    assert calls == ["Org/A", "Org/B"]
+
+
+def test_cli_submit_all_uses_manifest(monkeypatch, tmp_path):
+    """`--datasets all` iterates core_set + extended from the manifest."""
+    import speech_spoof_bench.submit as submit_mod
+    from speech_spoof_bench import manifest as _mf
+
+    meta_path = tmp_path / "meta.yaml"
+    meta_path.write_text(
+        "system:\n"
+        "  name: RB\n  slug: rb\n  description: d\n"
+        "  code: https://example.com/c\n"
+        "  checkpoint: https://huggingface.co/Org/rb\n"
+        "  paper:\n    arxiv_id: '1'\n    url: https://arxiv.org/abs/1\n    bibtex: '@x{}'\n"
+    )
+
+    monkeypatch.setattr(_mf, "fetch_manifest", lambda: _FAKE_MANIFEST)
+
+    seen = []
+    monkeypatch.setattr(submit_mod, "submit_one", lambda **kw: seen.append(kw["dataset_spec"]) or "url")
+
+    rc = main([
+        "submit",
+        "--model-module", "x:Y",
+        "--datasets", "all",
+        "--model-repo", "Org/rb",
+        "--submission-meta", str(meta_path),
+        "--hf-username", "u", "--contact", "c@example.com",
+        "--output-dir", str(tmp_path / "results"),
+    ])
+    assert rc == 0
+    assert seen == ["Org/A", "Org/B"]

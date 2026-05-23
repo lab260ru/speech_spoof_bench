@@ -6,6 +6,7 @@ import argparse
 import importlib
 import logging
 import sys
+from pathlib import Path
 from typing import Sequence
 
 from .benchmark import Benchmark
@@ -100,6 +101,24 @@ def _cmd_validate_submission(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_submit(args: argparse.Namespace) -> int:
+    from . import submit as submit_mod
+
+    results = submit_mod.submit(
+        model_module_spec=args.model_module,
+        dataset_specs=list(args.datasets),
+        output_dir=args.output_dir,
+        meta_path=args.submission_meta,
+        model_repo=args.model_repo,
+        hf_username=args.hf_username,
+        contact=args.contact,
+        continue_on_error=args.continue_on_error,
+    )
+    for spec, url in results.items():
+        print(f"{spec}\t{url}")
+    return 0 if all(not str(v).startswith("ERROR:") for v in results.values()) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="speech-spoof-bench")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -137,6 +156,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vs.add_argument("path", help="path to a submission YAML file")
     vs.set_defaults(func=_cmd_validate_submission)
+
+    sm = sub.add_parser("submit", help="run model + upload scores + open PR on dataset repo")
+    sm.add_argument("--model-module", required=True,
+                    help="module:ClassName, e.g. mypkg.mymod:MyModel")
+    sm.add_argument("--datasets", action="append", required=True,
+                    help="HF dataset id; repeatable; use 'all' for manifest-wide")
+    sm.add_argument("--model-repo", required=True,
+                    help="HF model repo (owner/name) that owns the scores.txt")
+    sm.add_argument("--submission-meta", required=True, type=Path,
+                    help="path to meta.yaml describing the system")
+    sm.add_argument("--hf-username", required=True)
+    sm.add_argument("--contact", required=True)
+    sm.add_argument("--output-dir", default="./results", type=Path)
+    sm.add_argument("--continue-on-error", action="store_true")
+    sm.set_defaults(func=_cmd_submit)
 
     rp = sub.add_parser(
         "reproduce",

@@ -1,8 +1,15 @@
 """Phase 7b — `submit` command implementation.
 
-Public surface (used by cli.py):
+Public surface (used by cli.py and tests):
   - load_meta(path) -> dict
-  - submit(...)             # added later in Task 8
+  - build_submission_payload(...) -> dict
+  - upload_scores(...) -> (url, oid)
+  - open_submission_pr(...) -> url
+  - submit_one(...) -> url
+  - submit(...) -> {dataset_spec: url}
+
+Module-level seams (monkeypatched by tests):
+  - _resolve_dataset_slug, _run_benchmark, _read_result_yaml
 """
 
 from __future__ import annotations

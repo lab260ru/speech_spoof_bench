@@ -1,0 +1,44 @@
+schema_version: 4
+
+system:
+  name: ""
+  slug: ""
+  description: ""
+  code: ""
+  checkpoint: ""
+  paper:
+    arxiv_id: ""
+    url: ""
+    bibtex: |
+      @article{...}
+
+dataset:
+  id: SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
+  revision: ""
+  split: test
+
+scores:
+  eer_percent: 0.0
+  n_trials: 71237
+  n_skipped: 0
+
+artifact:
+  # Must be pinned by commit sha. Pattern:
+  #   https://huggingface.co/<owner>/<repo>/resolve/<commit-sha>/.eval_results/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA/scores.txt
+  scores_url: ""
+  scores_sha256: ""
+  bench_version: ""
+
+# Leave this block empty — the maintainer fills it in at merge.
+reproduction:
+  reproduced_by: ""
+  reproduced_at: ""
+  reproduced_bench_version: ""
+  match: ""
+
+submitter:
+  hf_username: ""
+  contact: ""
+
+submitted_at: ""
+notes: ""

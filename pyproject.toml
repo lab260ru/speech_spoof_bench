@@ -35,3 +35,4 @@ addopts = "-ra"
 [tool.setuptools.package-data]
 "speech_spoof_bench.schema" = ["*.json"]
 "speech_spoof_bench.data" = ["*.json"]
+"speech_spoof_bench.data.dataset_skeleton" = ["*", "submissions/*"]

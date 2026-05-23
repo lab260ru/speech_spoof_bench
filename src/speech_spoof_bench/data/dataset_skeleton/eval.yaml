@@ -1,0 +1,23 @@
+name: {{NAME}}
+description: >
+  TODO: one-paragraph description of the dataset. What was collected, by whom,
+  what the bonafide/spoof split represents.
+evaluation_framework: inspect-ai
+
+tasks:
+  - id: antispoofing_eval
+    config: default
+    split: test
+
+    field_spec:
+      input: audio
+      target: label
+
+    solvers:
+      - name: speech_spoof_bench_solver
+
+    scorers:
+      - name: speech_spoof_scorer
+
+    metrics:
+      - eer_percent

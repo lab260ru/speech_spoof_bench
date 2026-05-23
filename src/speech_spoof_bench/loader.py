@@ -117,18 +117,27 @@ def _resolve_hf(repo_id: str, streaming: bool):
     return source, ds
 
 
-def resolve(spec: str, *, streaming: bool = True):
+def resolve(spec: str, *, streaming: bool = True, force_remote: bool = False):
     """Resolve a dataset spec to a (DatasetSource, IterableDataset).
 
     Dispatch:
       1. If ``Path(spec).is_dir()`` → local mode.
-      2. Else if ``spec`` looks like ``org/name`` → HF mode.
+      2. Else if ``spec`` looks like ``org/name``:
+         a. Consult local-dataset registry (unless ``force_remote=True``);
+            if mapped, dispatch to local mode against the mapped path.
+         b. Otherwise → HF mode.
       3. Else → ValueError.
     """
+    from . import local_registry  # local import; module is cheap
+
     candidate_path = Path(spec)
     if candidate_path.is_dir():
         return _resolve_local(candidate_path, streaming)
     if _HF_ID_RE.match(spec):
+        if not force_remote:
+            mapped = local_registry.lookup(spec)
+            if mapped is not None:
+                return _resolve_local(mapped, streaming)
         return _resolve_hf(spec, streaming)
     raise ValueError(
         f"dataset spec {spec!r} is not a directory and not in <org>/<name> form"

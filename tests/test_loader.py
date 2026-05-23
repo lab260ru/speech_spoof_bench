@@ -115,3 +115,44 @@ def test_hf_dispatch_invokes_load_dataset(monkeypatch, tmp_path):
 def test_bad_spec_neither_path_nor_repo_id():
     with pytest.raises(ValueError, match="not a directory"):
         resolve("just_a_word_no_slash_no_path")
+
+
+def test_resolve_consults_local_registry(monkeypatch, tmp_path):
+    """An HF id mapped in the registry resolves to the local directory."""
+    from speech_spoof_bench import loader, local_registry as lr
+
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    # minimal parquet shard with header — datasets refuses empty files
+    import pyarrow as pa, pyarrow.parquet as pq
+    pq.write_table(
+        pa.table({"path": ["x"], "audio": [b""], "label": [0], "notes": ["{}"]}),
+        d / "data" / "test-00000-of-00001.parquet",
+    )
+    (d / "eval.yaml").write_text(
+        "name: t\ntasks: [{split: test, metrics: [eer_percent]}]\n"
+    )
+    monkeypatch.setattr(lr, "lookup", lambda did: d if did == "Org/Foo" else None)
+
+    src, _ds = loader.resolve("Org/Foo", streaming=True)
+    assert src.is_local is True
+    assert src.local_path == d
+
+
+def test_resolve_force_remote_bypasses_registry(monkeypatch, tmp_path):
+    from speech_spoof_bench import loader, local_registry as lr
+
+    monkeypatch.setattr(lr, "lookup", lambda did: tmp_path)  # should be ignored
+    called = {}
+    def fake_hf(repo, streaming):
+        called["repo"] = repo
+        # return a dummy source so the caller can finish
+        return loader.DatasetSource(
+            spec=repo, display_name=repo, slug=repo.split("/")[-1],
+            canonical_id=repo, metrics=["eer_percent"], split="test",
+            is_local=False, local_path=None, revision=None,
+        ), None
+    monkeypatch.setattr(loader, "_resolve_hf", fake_hf)
+
+    loader.resolve("Org/Foo", streaming=True, force_remote=True)
+    assert called["repo"] == "Org/Foo"

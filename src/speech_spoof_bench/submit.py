@@ -8,6 +8,7 @@ Public surface (used by cli.py):
 from __future__ import annotations
 
 import json
+import logging
 from importlib import resources
 from io import BytesIO
 from pathlib import Path
@@ -19,6 +20,8 @@ from jsonschema import ValidationError, validate
 
 _META_SCHEMA_PACKAGE = "speech_spoof_bench.data"
 _META_SCHEMA_FILENAME = "submission_meta.schema.json"
+
+_LOG = logging.getLogger(__name__)
 
 
 class MetaValidationError(ValueError):
@@ -148,3 +151,127 @@ def open_submission_pr(
     if not url:
         raise RuntimeError("HF create_commit returned no PR url")
     return url
+
+
+def _resolve_dataset_slug(spec: str, api: HfApi) -> tuple[str, str, str, str]:
+    """Resolve `spec` to (canonical_id, slug, revision, split).
+
+    Slug is the last path segment (matches DatasetSource.slug for HF specs).
+    Revision is the current main-branch sha from HfApi.repo_info — we want the
+    state the run scored against, even though `loader.resolve` returns None for
+    HF specs today.
+    """
+    from .loader import resolve as _resolve
+
+    source, _ = _resolve(spec, streaming=True)
+    info = api.repo_info(repo_id=source.canonical_id, repo_type="dataset")
+    return source.canonical_id, source.slug, info.sha, source.split
+
+
+def _run_benchmark(
+    *, model_module_spec: str, dataset_spec: str, output_dir: Path,
+) -> None:
+    """Import the model class and run the benchmark for a single dataset."""
+    import importlib
+
+    from .benchmark import Benchmark
+
+    mod_name, cls_name = model_module_spec.split(":", 1)
+    cls = getattr(importlib.import_module(mod_name), cls_name)
+    model = cls()
+    Benchmark.run(
+        model,
+        datasets=[dataset_spec],
+        output_dir=str(output_dir),
+        skip_existing=False,
+    )
+
+
+def _read_result_yaml(out_dir: Path) -> dict[str, Any] | None:
+    p = out_dir / "result.yaml"
+    if not p.is_file():
+        return None
+    return yaml.safe_load(p.read_text())
+
+
+def submit_one(
+    *,
+    model_module_spec: str,
+    dataset_spec: str,
+    output_dir: Path,
+    meta: dict[str, Any],
+    model_repo: str,
+    hf_username: str,
+    contact: str,
+    submitted_at: str,
+    api: HfApi,
+) -> str:
+    """Run one (model, dataset) submission end-to-end. Returns the PR URL."""
+    from . import submission as _sub
+
+    canonical_id, slug, revision, _split = _resolve_dataset_slug(dataset_spec, api)
+    out_dir = Path(output_dir) / slug
+
+    existing = _read_result_yaml(out_dir)
+    if existing is None or existing.get("dataset", {}).get("revision") != revision:
+        _LOG.info("running benchmark for %s (revision %s)", canonical_id, revision)
+        _run_benchmark(
+            model_module_spec=model_module_spec,
+            dataset_spec=dataset_spec,
+            output_dir=Path(output_dir),
+        )
+        existing = _read_result_yaml(out_dir)
+        if existing is None:
+            # Benchmark.run may have been called with output_dir as its
+            # own base, creating results under output_dir/results/slug.
+            fallback = Path(output_dir) / "results" / slug
+            existing = _read_result_yaml(fallback)
+            if existing is not None:
+                out_dir = fallback
+        if existing is None:
+            raise RuntimeError(
+                f"benchmark run produced no result.yaml under {out_dir}"
+            )
+
+    # Sanity-check: every metric from the result must be present.
+    source_metrics = [
+        k for k in existing.get("scores", {}) if k not in {"n_trials", "n_skipped"}
+    ]
+    if not source_metrics:
+        raise RuntimeError(f"result.yaml at {out_dir} has no metric values")
+
+    # Override revision in the result we pass to build_submission_payload so
+    # the dataset block matches the freshly-resolved sha (loader.resolve
+    # currently returns None for HF specs).
+    existing = dict(existing)
+    existing["dataset"] = dict(existing["dataset"])
+    existing["dataset"]["revision"] = revision
+
+    scores_path = out_dir / "scores.txt"
+    scores_url, _commit_oid = upload_scores(
+        api=api,
+        model_repo=model_repo,
+        dataset_canonical_id=canonical_id,
+        local_path=scores_path,
+    )
+
+    payload = build_submission_payload(
+        result_yaml=existing,
+        meta=meta,
+        scores_url=scores_url,
+        scores_sha256=existing["artifact"]["scores_sha256"],
+        hf_username=hf_username,
+        contact=contact,
+        submitted_at=submitted_at,
+    )
+
+    yaml_text = yaml.safe_dump(payload, sort_keys=False)
+    _sub.parse_submission(yaml_text)  # raises if invalid
+
+    return open_submission_pr(
+        api=api,
+        dataset_id=canonical_id,
+        parent_commit=revision,
+        slug=meta["system"]["slug"],
+        yaml_text=yaml_text,
+    )

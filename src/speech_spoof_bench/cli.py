@@ -101,6 +101,16 @@ def _cmd_validate_submission(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_scaffold_dataset(args: argparse.Namespace) -> int:
+    from . import scaffold
+
+    scaffold.scaffold_dataset(
+        name=args.name, output_dir=args.output_dir, force=args.force,
+    )
+    print(f"scaffolded dataset skeleton at {args.output_dir}")
+    return 0
+
+
 def _cmd_submit(args: argparse.Namespace) -> int:
     from . import submit as submit_mod
 
@@ -171,6 +181,14 @@ def build_parser() -> argparse.ArgumentParser:
     sm.add_argument("--output-dir", default="./results", type=Path)
     sm.add_argument("--continue-on-error", action="store_true")
     sm.set_defaults(func=_cmd_submit)
+
+    sd = sub.add_parser("scaffold-dataset",
+                        help="generate the §1.1 dataset-repo skeleton")
+    sd.add_argument("--name", required=True)
+    sd.add_argument("--output-dir", required=True, type=Path)
+    sd.add_argument("--force", action="store_true",
+                    help="overwrite if output-dir is non-empty")
+    sd.set_defaults(func=_cmd_scaffold_dataset)
 
     rp = sub.add_parser(
         "reproduce",

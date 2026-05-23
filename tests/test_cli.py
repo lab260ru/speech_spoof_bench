@@ -172,3 +172,11 @@ def test_cli_submit_all_uses_manifest(monkeypatch, tmp_path):
     ])
     assert rc == 0
     assert seen == ["Org/A", "Org/B"]
+
+
+def test_cli_scaffold_dataset(tmp_path):
+    out = tmp_path / "Y"
+    rc = main(["scaffold-dataset", "--name", "Y", "--output-dir", str(out)])
+    assert rc == 0
+    assert (out / "eval.yaml").is_file()
+    assert "name: Y" in (out / "eval.yaml").read_text()

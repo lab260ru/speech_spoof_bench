@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import json
 from importlib import resources
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import yaml
-from huggingface_hub import HfApi
+from huggingface_hub import CommitOperationAdd, HfApi
 from jsonschema import ValidationError, validate
 
 _META_SCHEMA_PACKAGE = "speech_spoof_bench.data"
@@ -115,3 +116,35 @@ def upload_scores(
     oid = info.oid
     url = f"https://huggingface.co/{model_repo}/resolve/{oid}/{path_in_repo}"
     return url, oid
+
+
+def open_submission_pr(
+    *,
+    api: HfApi,
+    dataset_id: str,
+    parent_commit: str,
+    slug: str,
+    yaml_text: str,
+) -> str:
+    """Open an HF PR on the dataset repo carrying submissions/<slug>.yaml.
+
+    Returns the PR URL.
+    """
+    ops = [
+        CommitOperationAdd(
+            path_in_repo=f"submissions/{slug}.yaml",
+            path_or_fileobj=BytesIO(yaml_text.encode("utf-8")),
+        )
+    ]
+    info = api.create_commit(
+        repo_id=dataset_id,
+        repo_type="dataset",
+        operations=ops,
+        commit_message=f"submissions: add {slug}",
+        create_pr=True,
+        parent_commit=parent_commit,
+    )
+    url = getattr(info, "pr_url", None)
+    if not url:
+        raise RuntimeError("HF create_commit returned no PR url")
+    return url

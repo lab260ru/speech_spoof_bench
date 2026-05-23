@@ -1,0 +1,37 @@
+name: verify-hf-pr
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "HF dataset id (org/name)"
+        required: true
+        type: string
+      pr:
+        description: "HF PR / discussion number"
+        required: true
+        type: string
+      branch:
+        description: "Branch ref on the dataset repo (e.g. refs/pr/42)"
+        required: true
+        type: string
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .
+      - name: Verify PR
+        env:
+          HF_BOT_TOKEN: ${{ secrets.HF_BOT_TOKEN }}
+          GH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          speech-spoof-bench ci verify-pr \
+            --repo   "${{ inputs.repo }}" \
+            --pr     "${{ inputs.pr }}" \
+            --branch "${{ inputs.branch }}"

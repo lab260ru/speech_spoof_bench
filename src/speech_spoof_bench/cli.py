@@ -158,6 +158,11 @@ def _cmd_ci_verify_pr(args: argparse.Namespace) -> int:
     return verify_pr.run(repo=args.repo, pr=int(args.pr), branch=args.branch)
 
 
+def _cmd_ci_nightly(args: argparse.Namespace) -> int:
+    from .ci import nightly
+    return nightly.run(open_issues=args.open_issues)
+
+
 def _cmd_submit(args: argparse.Namespace) -> int:
     from . import submit as submit_mod
 
@@ -305,6 +310,12 @@ def build_parser() -> argparse.ArgumentParser:
     vpr.add_argument("--branch", required=True,
         help="ref to fetch the PR contents from, e.g. refs/pr/42")
     vpr.set_defaults(func=_cmd_ci_verify_pr)
+
+    nr = ci_sub.add_parser("nightly-revalidate",
+        help="walk all merged submissions, open/close stale-submission issues")
+    nr.add_argument("--open-issues", action="store_true",
+        help="open/comment/close GitHub issues for failures (requires gh + GH_TOKEN)")
+    nr.set_defaults(func=_cmd_ci_nightly)
 
     return p
 

@@ -21,12 +21,12 @@ def _iter_template_files() -> list[tuple[str, bytes]]:
 
     def walk(node, rel: str) -> None:
         for child in node.iterdir():
+            name = child.name
+            if name == "__pycache__" or name == "__init__.py":
+                continue
             if child.is_dir():
-                walk(child, f"{rel}{child.name}/")
+                walk(child, f"{rel}{name}/")
             else:
-                name = child.name
-                if name == "__init__.py":
-                    continue
                 out.append((f"{rel}{name}", child.read_bytes()))
 
     walk(root, "")

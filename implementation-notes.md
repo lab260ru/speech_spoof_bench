@@ -137,3 +137,23 @@ Plan: `docs/plans/2026-05-22-phase-7b-authoring.md`. Spec: `docs/specs/2026-05-2
 - Decision: silent re-run on revision mismatch in the hybrid path; no `--force-rerun` flag. `result.yaml` is a local artifact, overwrite is harmless.
 - Decision: `submit` requires the model repo to exist; no `create_repo` call.
 - Subagent-driven execution starting now (Tasks 1–10 dispatched, Task 11 manual with user).
+
+### Phase 7b validation (2026-05-23 manual smoke against HF)
+
+- `submit` against `SpeechAntiSpoofingBenchmarks/random-baseline-asas` + `ASVspoof2019_LA` on the live HF repos → **PASS**. PR opened at https://huggingface.co/datasets/.../discussions/4. Diff was a single file (`submissions/random-baseline-phase7b.yaml`); `scores_url` pinned by 40-char sha; `reproduction: {}`; `dataset.revision` is a 40-char hex sha (not null — confirms the `HfApi.repo_info(...).sha` override in `submit_one` is doing its job).
+- Idempotency confirmed: the random baseline is deterministic, so the freshly-generated `scores.txt` matched the Phase 3 upload byte-for-byte and HF returned the prior commit oid ("No files have been modified since last commit"). `scores_url` still pins a valid sha. Good.
+- `validate-submission /tmp/phase7b-pr.yaml` → 0.
+- `reproduce --scoring /tmp/phase7b-pr.yaml` → 0; EER reproduced **exactly** (Δ 0.0e+00); sha256 matched.
+- PR closed without merge (avoids duplicate of `random-baseline.yaml`).
+- `scaffold-dataset --name TestScaffold` → all six expected files present; `{{NAME}}` substituted correctly in README.md and eval.yaml.
+- Tweak applied mid-flight (not in plan): added a `tqdm.auto` progress bar around the runner's dataset iteration so cold-run smoke tests show count/rate instead of only HTTP-log spam (commit 6a08a7c). Streaming mode lacks `__len__`, so no total/ETA — fine for the use case.
+- **Follow-up bug**: `scaffold-dataset` leaves `__pycache__/` dirs in the output (and a top-level `__pycache__`). `_iter_template_files` filters by filename `__init__.py` only — it walks into any directory including `__pycache__` and copies the .pyc files. Fix: skip `__pycache__` directories (and the `__init__.py` markers) in the walker.
+
+### Validation summary
+
+All 11 Phase 7b checkboxes green. `submit` end-to-end on a live HF dataset + model repo produces a valid, reproducible submission with no manual fix-ups. `scaffold-dataset` produces the §1.1 layout. Two cleanup follow-ups (below).
+
+### Follow-ups
+
+- `scaffold-dataset` should skip `__pycache__` directories during the walk (and ideally skip `__init__.py` template markers up-front rather than per-file). Cheap fix.
+- `submit` cannot today consume a local dataset path while opening the PR against the HF repo — `_resolve_dataset_slug` runs both the loader (path-aware) and `HfApi.repo_info` (HF-id-only). A future `--dataset-spec-local` companion flag would let contributors point the run at a local working copy while the PR target stays HF. Not blocking.

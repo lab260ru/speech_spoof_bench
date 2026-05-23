@@ -172,14 +172,14 @@ Spec: `docs/specs/2026-05-22-phase-7a-validators-design.md`.
 
 ---
 
-## Phase 7b — Authoring (`submit`, `scaffold-dataset`)
+## Phase 7b — Authoring (`submit`, `scaffold-dataset`) ✅
 
 **Goal**: humans no longer hand-author submission YAMLs.
 
-Spec: TBD (own brainstorming cycle once 7a lands).
+Spec: `docs/specs/2026-05-22-phase-7b-authoring-design.md`. Plan: `docs/plans/2026-05-22-phase-7b-authoring.md`.
 
-- [ ] `submit` (§2.5a) — one command: run + upload scores to model repo + build YAML + open HF PR on dataset repo.
-- [ ] `scaffold-dataset` (§2.5, §3.8 step 1) — produces the skeleton for a new dataset repo.
+- [x] `submit` (§2.5a) — one command: run + upload scores to model repo + build YAML + open HF PR on dataset repo.
+- [x] `scaffold-dataset` (§2.5, §3.8 step 1) — produces the skeleton for a new dataset repo.
 
 **Done when**: `speech-spoof-bench submit --model-module speech_spoof_bench.examples.random_baseline:RandomBaseline --model-repo <you>/random-baseline-asas` opens a PR on LA that contains a valid v4 submission YAML. Manual merge → Arena reflects it on next Refresh.
 

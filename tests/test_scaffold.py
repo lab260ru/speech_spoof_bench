@@ -27,6 +27,8 @@ def test_scaffold_writes_all_expected_files(tmp_path: Path):
     }
     actual = {a for a in actual if not a.endswith("__init__.py")}
     assert expected.issubset(actual)
+    # No __pycache__ artifacts leaked from the packaged template.
+    assert not any("__pycache__" in a for a in actual)
 
 
 def test_scaffold_substitutes_name_token(tmp_path: Path):

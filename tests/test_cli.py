@@ -254,3 +254,16 @@ def test_run_no_local_bypasses_registry(monkeypatch, tmp_path):
             "--no-local",
         ])
     assert seen["force_remote"] is True
+
+
+def test_ci_verify_pr_dispatches(monkeypatch):
+    from speech_spoof_bench import cli
+    from speech_spoof_bench.ci import verify_pr
+    captured = {}
+    def fake_run(*, repo, pr, branch, **_kw):
+        captured["args"] = (repo, pr, branch)
+        return 0
+    monkeypatch.setattr(verify_pr, "run", fake_run)
+    rc = cli.main(["ci", "verify-pr", "--repo", "Org/Foo", "--pr", "7", "--branch", "refs/pr/7"])
+    assert rc == 0
+    assert captured["args"] == ("Org/Foo", 7, "refs/pr/7")

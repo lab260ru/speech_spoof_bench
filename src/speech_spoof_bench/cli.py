@@ -153,6 +153,11 @@ def _cmd_local_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ci_verify_pr(args: argparse.Namespace) -> int:
+    from .ci import verify_pr
+    return verify_pr.run(repo=args.repo, pr=int(args.pr), branch=args.branch)
+
+
 def _cmd_submit(args: argparse.Namespace) -> int:
     from . import submit as submit_mod
 
@@ -289,6 +294,17 @@ def build_parser() -> argparse.ArgumentParser:
     ls_show = loc_sub.add_parser("show", help="show resolution for one dataset id")
     ls_show.add_argument("dataset_id")
     ls_show.set_defaults(func=_cmd_local_show)
+
+    ci = sub.add_parser("ci", help="CI commands (Phase 8)")
+    ci_sub = ci.add_subparsers(dest="ci_cmd", required=True)
+
+    vpr = ci_sub.add_parser("verify-pr",
+        help="validate + reproduce changed submissions on an HF dataset PR")
+    vpr.add_argument("--repo", required=True, help="dataset id (org/name)")
+    vpr.add_argument("--pr", required=True, help="HF PR (discussion) number")
+    vpr.add_argument("--branch", required=True,
+        help="ref to fetch the PR contents from, e.g. refs/pr/42")
+    vpr.set_defaults(func=_cmd_ci_verify_pr)
 
     return p
 

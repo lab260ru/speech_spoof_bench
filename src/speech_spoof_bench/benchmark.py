@@ -95,6 +95,7 @@ class Benchmark:
         streaming: bool = True,
         cleanup: bool = True,
         skip_existing: bool = True,
+        force_remote: bool = False,
     ) -> dict[str, BenchmarkResult]:
         if isinstance(datasets, str) and datasets == "all":
             raise NotImplementedError(
@@ -110,7 +111,7 @@ class Benchmark:
         model.load()
         try:
             for spec in datasets:
-                source, ds = resolve(spec, streaming=streaming)
+                source, ds = resolve(spec, streaming=streaming, force_remote=force_remote)
                 out = output_root / source.slug
                 result_yaml = out / "result.yaml"
 

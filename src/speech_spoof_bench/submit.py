@@ -161,7 +161,9 @@ def open_submission_pr(
     return url
 
 
-def _resolve_dataset_slug(spec: str, api: HfApi) -> tuple[str, str, str, str]:
+def _resolve_dataset_slug(
+    spec: str, api: HfApi, *, force_remote: bool = False,
+) -> tuple[str, str, str, str]:
     """Resolve `spec` to (canonical_id, slug, revision, split).
 
     Slug is the last path segment (matches DatasetSource.slug for HF specs).
@@ -171,13 +173,14 @@ def _resolve_dataset_slug(spec: str, api: HfApi) -> tuple[str, str, str, str]:
     """
     from .loader import resolve as _resolve
 
-    source, _ = _resolve(spec, streaming=True)
+    source, _ = _resolve(spec, streaming=True, force_remote=force_remote)
     info = api.repo_info(repo_id=source.canonical_id, repo_type="dataset")
     return source.canonical_id, source.slug, info.sha, source.split
 
 
 def _run_benchmark(
     *, model_module_spec: str, dataset_spec: str, output_dir: Path,
+    force_remote: bool = False,
 ) -> None:
     """Import the model class and run the benchmark for a single dataset."""
     import importlib
@@ -192,6 +195,7 @@ def _run_benchmark(
         datasets=[dataset_spec],
         output_dir=str(output_dir),
         skip_existing=False,
+        force_remote=force_remote,
     )
 
 
@@ -213,11 +217,14 @@ def submit_one(
     contact: str,
     submitted_at: str,
     api: HfApi,
+    force_remote: bool = False,
 ) -> str:
     """Run one (model, dataset) submission end-to-end. Returns the PR URL."""
     from . import submission as _sub
 
-    canonical_id, slug, revision, _split = _resolve_dataset_slug(dataset_spec, api)
+    canonical_id, slug, revision, _split = _resolve_dataset_slug(
+        dataset_spec, api, force_remote=force_remote,
+    )
     out_dir = Path(output_dir) / slug
 
     existing = _read_result_yaml(out_dir)
@@ -227,6 +234,7 @@ def submit_one(
             model_module_spec=model_module_spec,
             dataset_spec=dataset_spec,
             output_dir=Path(output_dir),
+            force_remote=force_remote,
         )
         existing = _read_result_yaml(out_dir)
         if existing is None:
@@ -302,6 +310,7 @@ def submit(
     contact: str,
     continue_on_error: bool = False,
     api: HfApi | None = None,
+    force_remote: bool = False,
 ) -> dict[str, str]:
     """Run `submit_one` for each dataset; return {dataset_spec: pr_url}."""
     meta = load_meta(meta_path)
@@ -322,6 +331,7 @@ def submit(
                 contact=contact,
                 submitted_at=submitted_at,
                 api=api,
+                force_remote=force_remote,
             )
             _LOG.info("submitted %s → %s", spec, url)
             results[spec] = url

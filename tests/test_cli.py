@@ -223,3 +223,34 @@ def test_local_show_mapped_and_unmapped(monkeypatch, tmp_path, capsys):
     assert cli.main(["local", "show", "Org/Foo"]) == 0
     out = capsys.readouterr().out
     assert "local" in out and str(d) in out
+
+
+def test_run_no_local_bypasses_registry(monkeypatch, tmp_path):
+    """When --no-local is set, runner must not see the registered local path."""
+    from speech_spoof_bench import benchmark as bm, cli, local_registry as lr
+
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    # Pretend Org/Foo is registered locally.
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    (d / "eval.yaml").write_text("name: x\n")
+    lr.set("Org/Foo", d)
+
+    seen = {}
+    def fake_resolve(spec, *, streaming=True, force_remote=False):
+        seen["spec"] = spec
+        seen["force_remote"] = force_remote
+        # short-circuit so we don't actually load anything
+        raise SystemExit(0)
+    # benchmark.py uses `from .loader import resolve`, so patch there directly
+    monkeypatch.setattr(bm, "resolve", fake_resolve)
+
+    with pytest.raises(SystemExit):
+        cli.main([
+            "run",
+            "--model-module", "speech_spoof_bench.examples.random_baseline:RandomBaseline",
+            "--datasets", "Org/Foo",
+            "--no-local",
+        ])
+    assert seen["force_remote"] is True

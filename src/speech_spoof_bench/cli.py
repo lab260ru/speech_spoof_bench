@@ -35,6 +35,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         streaming=not args.no_streaming,
         cleanup=not args.no_cleanup,
         skip_existing=not args.no_skip_existing,
+        force_remote=args.no_local,
     )
     return 0
 
@@ -53,7 +54,9 @@ def _cmd_list(args: argparse.Namespace) -> int:
 def _cmd_validate_dataset(args: argparse.Namespace) -> int:
     from . import validate
     report = validate.validate_dataset(
-        args.spec, skip_submissions=args.skip_submissions
+        args.spec,
+        skip_submissions=args.skip_submissions,
+        force_remote=args.no_local,
     )
     print(report.format())
     return 0 if report.ok else 1
@@ -162,6 +165,7 @@ def _cmd_submit(args: argparse.Namespace) -> int:
         hf_username=args.hf_username,
         contact=args.contact,
         continue_on_error=args.continue_on_error,
+        force_remote=args.no_local,
     )
     for spec, url in results.items():
         print(f"{spec}\t{url}")

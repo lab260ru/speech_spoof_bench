@@ -133,10 +133,12 @@ def _list_submission_paths(
     return out
 
 
-def _check_dataset_side(spec: str) -> tuple[list[CheckResult], dict[str, Any]]:
+def _check_dataset_side(
+    spec: str, *, force_remote: bool = False,
+) -> tuple[list[CheckResult], dict[str, Any]]:
     """Run D1–D7. Returns (checks, info_for_submission_checks)."""
     checks: list[CheckResult] = []
-    source, ds = resolve(spec, streaming=True)
+    source, ds = resolve(spec, streaming=True, force_remote=force_remote)
 
     # D1: schema columns
     first = None
@@ -279,10 +281,12 @@ def _check_dataset_side(spec: str) -> tuple[list[CheckResult], dict[str, Any]]:
     return checks, info
 
 
-def validate_dataset(spec: str, *, skip_submissions: bool = False) -> ValidationReport:
+def validate_dataset(
+    spec: str, *, skip_submissions: bool = False, force_remote: bool = False,
+) -> ValidationReport:
     report = ValidationReport(dataset_spec=spec)
     try:
-        dataset_checks, info = _check_dataset_side(spec)
+        dataset_checks, info = _check_dataset_side(spec, force_remote=force_remote)
     except KeyError as e:
         # loader.py's _parse_eval_yaml raises KeyError("metric id 'X' not
         # registered (from <path>)") when eval.yaml references an unknown

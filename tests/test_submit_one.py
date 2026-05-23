@@ -86,7 +86,7 @@ def test_submit_one_reuses_existing_result_when_revision_matches(
 
     monkeypatch.setattr(submit_mod, "_run_benchmark", fake_bench_run)
     monkeypatch.setattr(submit_mod, "_resolve_dataset_slug",
-                        lambda spec, api: ("Org/A", "Org_A", "deadbee", "test"))
+                        lambda spec, api, **_: ("Org/A", "Org_A", "deadbee", "test"))
 
     pr_url = submit_one(
         model_module_spec="x:Y",
@@ -120,7 +120,7 @@ def test_submit_one_runs_benchmark_when_result_missing(
 
     monkeypatch.setattr(submit_mod, "_run_benchmark", fake_bench_run)
     monkeypatch.setattr(submit_mod, "_resolve_dataset_slug",
-                        lambda spec, api: ("Org/A", "Org_A", "deadbee", "test"))
+                        lambda spec, api, **_: ("Org/A", "Org_A", "deadbee", "test"))
 
     pr_url = submit_one(
         model_module_spec="x:Y",
@@ -149,7 +149,7 @@ def test_submit_one_reruns_when_revision_mismatch(
 
     monkeypatch.setattr(submit_mod, "_run_benchmark", fake_bench_run)
     monkeypatch.setattr(submit_mod, "_resolve_dataset_slug",
-                        lambda spec, api: ("Org/A", "Org_A", "newrev1", "test"))
+                        lambda spec, api, **_: ("Org/A", "Org_A", "newrev1", "test"))
 
     submit_one(
         model_module_spec="x:Y",
@@ -173,7 +173,7 @@ def test_submit_one_yaml_is_schema_valid(
     fake_hf_api.repo_info.return_value.sha = "deadbee"
     _make_existing_result(tmp_path, "Org_A", "deadbee")
     monkeypatch.setattr(submit_mod, "_resolve_dataset_slug",
-                        lambda spec, api: ("Org/A", "Org_A", "deadbee", "test"))
+                        lambda spec, api, **_: ("Org/A", "Org_A", "deadbee", "test"))
     monkeypatch.setattr(submit_mod, "_run_benchmark", lambda **_: None)
 
     submit_one(

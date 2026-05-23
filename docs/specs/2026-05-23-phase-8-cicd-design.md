@@ -48,15 +48,22 @@ Plus the secrets matrix (§8) and the manual runbook (§9).
 
 ### 3.1 Registry file
 
-Path: `~/.config/ssb/local.yaml` (created lazily). Format:
+Path: `local-datasets.yaml` at the **pip-package repo root** (i.e. `speech-spoof-bench/local-datasets.yaml`). Created lazily by `local set`. Gitignored (it holds machine-specific absolute paths).
+
+Format:
 
 ```yaml
 schema_version: 1
 datasets:
-  SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA: /home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
+  - id: SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
+    path: /home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
+  - id: SpeechAntiSpoofingBenchmarks/InTheWild
+    path: /home/kirill/mnt/drive3_8tb/SpeechAntiSpoofingBenchmarks/InTheWild
 ```
 
 The mapped path must be a directory containing `eval.yaml` and `data/test-*.parquet` (validated on `local set`, re-validated on each loader call — missing dir errors loudly, never silently falls back to HF).
+
+**Lookup:** the loader imports the registry module which resolves the file path relative to the installed `speech_spoof_bench` package (`Path(__file__).resolve().parents[2] / "local-datasets.yaml"` for editable installs). For non-editable installs the registry simply doesn't exist and the loader behaves exactly as today.
 
 ### 3.2 Loader integration
 

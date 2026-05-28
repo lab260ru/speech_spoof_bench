@@ -1166,6 +1166,17 @@ git commit -m "feat(arena): mount badge router before gradio mount"
 - Modify: `speech-spoof-bench/src/speech_spoof_bench/badge.py`
 - Modify: `speech-spoof-bench/tests/test_badge_build_paste_comment.py`
 
+**Why this is the only change needed for the post-merge workflow:** the
+`ci post-merge-badge` workflow (Phase 9) builds its HF-discussion comment by
+calling `badge.build_paste_comment(...)` and posting the result (see
+`speech-spoof-bench/src/speech_spoof_bench/ci/post_merge_badge.py` — it is *not*
+touched here). Because this task adds the tier + rank lines inside
+`build_paste_comment`, every future post-merge comment automatically includes all
+three badges. The badge images are dynamic shields endpoints, so they render live
+whenever the comment is viewed — even if the arena hasn't re-ingested the new
+submission yet (they briefly show `unranked`, then populate on the next arena
+refresh). No timing coupling between the comment and the arena.
+
 - [ ] **Step 1: Write the failing test**
 
 Append to `speech-spoof-bench/tests/test_badge_build_paste_comment.py`:
@@ -1238,6 +1249,68 @@ Expected: PASS (existing + 2 new).
 cd /home/kirill/speech-spoof-bench/speech-spoof-bench
 git add src/speech_spoof_bench/badge.py tests/test_badge_build_paste_comment.py
 git commit -m "feat(badge): post-merge comment emits tier + rank endpoint badges"
+```
+
+---
+
+## Task 12b: Regression — post-merge CI comment carries all three badges
+
+Confirms the `post_merge_badge` handler (unchanged) now produces a comment with
+the tier + rank endpoint badges, end-to-end through `build_paste_comment`.
+
+**Files:**
+- Modify: `speech-spoof-bench/tests/ci/test_post_merge_badge_happy.py`
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `speech-spoof-bench/tests/ci/test_post_merge_badge_happy.py`:
+
+```python
+def test_post_merge_comment_includes_tier_and_rank_badges(monkeypatch, tmp_path):
+    """The merged-PR comment body carries EER + tier + rank badge lines."""
+    api = make_api(
+        sha="deadbeefcafe1234",
+        parent="parent0000",
+        sha_files=["submissions/aasist.yaml", "submissions/README.md"],
+        parent_files=["submissions/README.md"],
+    )
+
+    def fake_dl(repo_id, filename, revision, repo_type):
+        p = tmp_path / filename.replace("/", "_")
+        p.write_text(_eval_yaml() if filename == "eval.yaml" else _good_yaml())
+        return str(p)
+    monkeypatch.setattr(post_merge_badge, "_download_at_revision", fake_dl)
+
+    posted = []
+    monkeypatch.setattr(post_merge_badge, "_post_comment",
+                        lambda repo, pr, body: posted.append(body))
+
+    rc = post_merge_badge.run(
+        repo="Org/ASVspoof2019_LA", pr=42, sha="deadbeefcafe1234",
+        api=api, gh_run_url="https://gh/run",
+    )
+    assert rc == 0
+    body = posted[0]
+    host = "speechantispoofingbenchmarks-speechantispoofingarena.hf.space"
+    # slug in _good_yaml() is "aasist"
+    assert f"/badge/aasist/tier.json" in body
+    assert f"/badge/aasist/rank.json" in body
+    assert "img.shields.io/badge/EER" in body  # the original static EER badge too
+```
+
+- [ ] **Step 2: Run test to verify it passes**
+
+Run: `cd /home/kirill/speech-spoof-bench/speech-spoof-bench && pytest tests/ci/test_post_merge_badge_happy.py -v`
+Expected: PASS — the handler is unchanged; the new lines flow in via
+`build_paste_comment` (Task 12). If it FAILS because the badge lines are absent,
+Task 12 was not applied correctly — fix Task 12, not the handler.
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /home/kirill/speech-spoof-bench/speech-spoof-bench
+git add tests/ci/test_post_merge_badge_happy.py
+git commit -m "test(ci): post-merge comment carries tier + rank badges end-to-end"
 ```
 
 ---
@@ -1534,6 +1607,17 @@ print("README updated")
   `gamma_aggregated`/`gamma_pooled` or add a new tier with a `color`, commit +
   push, wait for the Space to refresh, and confirm the ranking/badge colors
   change with no code change. (Revert afterward if it was only a probe.)
+
+- [ ] **M7.** Post-merge comment end-to-end (the `post-merge-badge` workflow):
+  open a throwaway submission PR on `SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA`
+  (a copy of `submissions/random-baseline.yaml` with a new `slug`/filename, as in
+  the Phase 9 smoke test), wait for `verify-pr` ✅, merge it, then read the merged
+  discussion's bot comment and confirm its README section now lists **three**
+  badge lines — the static EER badge plus the `…/badge/<slug>/tier.json` and
+  `…/badge/<slug>/rank.json` endpoint badges. Then delete the throwaway
+  submission via a follow-up PR (same cleanup as Phase 9) so the arena shows only
+  real rows. This exercises the full chain webhook → workflow →
+  `build_paste_comment` with the new badges, on live infrastructure.
 
 ---
 

@@ -542,6 +542,38 @@ tiers:
 
 Adding e.g. `platinum` later is just inserting a row above gold with `min_coverage: 1.0` and a tie-breaker rule (e.g. "all submissions at `inference` verification level"). The arena reads the tier list and renders one table per tier in order.
 
+### §3.6.2 Backlink badges (model-page side)
+
+Phase 9 — after a submission PR is merged on a dataset repo, CI posts a
+follow-up comment on the HF discussion with a paste-ready `result.yaml`,
+a static `shields.io` badge line, and a `huggingface-cli upload` one-liner.
+The submitter pastes the YAML into their model repo at
+`.eval_results/<dataset-org>/<dataset-name>/result.yaml` and the badge line
+into their README. The HF model page then renders a shields badge that
+links back to the Arena.
+
+`result.yaml` shape (`schema_version: 1`, validated by
+`src/speech_spoof_bench/schema/result.schema.json`):
+
+- `system`: `name`, `slug`, `paper.arxiv_id` — projected from the submission.
+- `dataset`: `id`, `revision`, `split` — copied verbatim.
+- `scores`: all metric values + `n_trials` + `n_skipped`.
+- `arena.url`: Arena Space URL.
+- `arena.system_url`: `<arena.url>?system=<slug>` — opaque to the Arena
+  today, deep-linked in Phase 10.
+- `artifact.scores_url`: copied verbatim from the merged submission.
+
+No `submitter`, no `reproduction`, no `bench_version` — those are
+submission-side concerns. The badge value comes from the dataset's *primary
+metric* (first id in `eval.yaml`'s `metrics:` list at the submission's
+pinned revision). Color band by EER percentile:
+`<2% brightgreen / <5% green / <10% yellow / else lightgrey`.
+
+The comment is made idempotent by an HTML sentinel:
+`<!-- ssb:badge --> sha=<merge-sha> path=<submissions/*.yaml>`. CI scans
+existing discussion comments for this marker before posting; a re-run of
+the workflow on the same merge sha is a no-op.
+
 ### §3.7 Ranking logic
 
 ```python

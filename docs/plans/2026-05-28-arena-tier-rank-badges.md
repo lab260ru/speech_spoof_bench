@@ -1,5 +1,10 @@
 # Arena Tier & Rank Badges Implementation Plan
 
+> **SUPERSEDED** — do not execute. The rank model changed from within-tier to a
+> global manifest-configured formula. The replacement plan derives from
+> `docs/specs/2026-05-28-arena-ranking-framework-design.md`. This file's tier-badge
+> tasks are still a useful reference for Phase B.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Serve two dynamic shields-endpoint badges (arena tier + within-tier rank) from the arena, generic over any manifest-defined tier set, and wire them into the post-merge comment + the random-baseline model page.

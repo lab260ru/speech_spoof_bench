@@ -1,6 +1,11 @@
 # Arena tier & rank badges (design)
 
-**Status**: design, awaiting plan
+> **SUPERSEDED** by `2026-05-28-arena-ranking-framework-design.md`. The endpoint
+> / comment / README mechanics here are reused, but the **rank source** changed
+> from within-tier to a global, manifest-configured formula. Read the framework
+> spec instead.
+
+**Status**: superseded
 **Builds on**: Phase 9 badge layer (`docs/specs/2026-05-28-phase-9-badge-design.md`)
 
 ## Goal

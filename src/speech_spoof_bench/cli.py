@@ -165,6 +165,11 @@ def _cmd_ci_nightly(args: argparse.Namespace) -> int:
     return nightly.run(open_issues=args.open_issues)
 
 
+def _cmd_ci_post_merge_badge(args: argparse.Namespace) -> int:
+    from .ci import post_merge_badge
+    return post_merge_badge.run(repo=args.repo, pr=int(args.pr), sha=args.sha)
+
+
 def _cmd_submit(args: argparse.Namespace) -> int:
     from . import submit as submit_mod
 
@@ -318,6 +323,15 @@ def build_parser() -> argparse.ArgumentParser:
     nr.add_argument("--open-issues", action="store_true",
         help="open/comment/close GitHub issues for failures (requires gh + GH_TOKEN)")
     nr.set_defaults(func=_cmd_ci_nightly)
+
+    pmb = ci_sub.add_parser(
+        "post-merge-badge",
+        help="post badge snippet to merged HF discussion (Phase 9)",
+    )
+    pmb.add_argument("--repo", required=True, help="dataset id (org/name)")
+    pmb.add_argument("--pr", required=True, help="HF PR (discussion) number")
+    pmb.add_argument("--sha", required=True, help="merge commit sha on the dataset main branch")
+    pmb.set_defaults(func=_cmd_ci_post_merge_badge)
 
     return p
 

@@ -185,19 +185,24 @@ Spec: `docs/specs/2026-05-22-phase-7b-authoring-design.md`. Plan: `docs/plans/20
 
 ---
 
-## Phase 8 — CI/CD layer
+## Phase 8 — CI/CD layer ✅
 
 **Goal**: PRs validated automatically; comments posted back to HF discussions; merging triggers Arena refresh without manual Refresh.
 
-- [ ] **8a. Upgrade Arena to Docker Space.** Move `app.py` + new `webhook.py` into a `Dockerfile`-built image. Mount Gradio at `/` and FastAPI at `/webhook`. Verify Arena still works identically.
-- [ ] **8b. Add `cache.json` + committed persistence.** Cold start reads `cache.json` first; webhook handler updates it and commits back using `SPACE_COMMIT_TOKEN`. Cold-start time drops to <3s.
-- [ ] **8c. Configure HF webhooks.** Subscribe Arena's `/webhook` to `repo.content` events on the LA dataset repo. Test with a dummy commit — Arena refreshes within 60s.
-- [ ] **8d. GitHub Actions: `verify-hf-pr.yml`.** Triggered by `workflow_dispatch`. Calls `speech-spoof-bench ci verify-pr`. Posts CI comment to HF discussion via `HF_BOT_TOKEN`. Test on a dummy PR.
-- [ ] **8e. Webhook → Actions bridge.** When `/webhook` receives a PR-branch event, it calls `gh workflow run verify-hf-pr.yml` using `GH_PAT`. End-to-end: open HF PR → CI comment appears within 2 minutes.
-- [ ] **8f. `nightly-revalidate.yml`.** Cron job. Walks all merged submissions; opens issue on 404 / sha mismatch / EER drift.
-- [ ] **8g. Secrets audit.** Confirm all four secrets from §3.5.5 are minimum-scope.
+Spec: `docs/specs/2026-05-23-phase-8-cicd-design.md`. Plan: `docs/plans/2026-05-23-phase-8-cicd.md`.
 
-**Done when**: opening an HF PR on LA → CI comment appears → maintainer merges → Arena reflects within 60s. All automatic.
+- [x] **8a. Upgrade Arena to Docker Space.** FastAPI host (`arena/main.py`) mounts Gradio at `/` and the webhook router at `/webhook`; `Dockerfile` (python:3.11-slim + `apt-get install git` for the `git+https://` pip dep). README switched to `sdk: docker`.
+- [x] **8b. Add `cache.json` + committed persistence.** `arena/cache_store.py` reads `cache.json` on cold start (`ingest.hydrate`), background-refreshes, and commits back via `SPACE_COMMIT_TOKEN`. Content-hash debounce excludes `loaded_at` and is order-independent over rows/warnings (avoids rebuild loop).
+- [x] **8d. GitHub Actions: `verify-hf-pr.yml`.** `workflow_dispatch`-triggered; runs `speech-spoof-bench ci verify-pr`; posts markdown verdict to the HF discussion via `HfApi.comment_discussion` with `HF_BOT_TOKEN`.
+- [x] **8e. Webhook → Actions bridge.** `arena/webhook.py` HMAC-checks `HF_WEBHOOK_SECRET`, ignores Space self-events, refreshes on `refs/heads/main` and dispatches `verify-hf-pr.yml` on `refs/pr/<n>` via the GitHub REST API using `GH_PAT`.
+- [x] **8f. `nightly-revalidate.yml`.** Cron `0 6 * * *` UTC; `speech-spoof-bench ci nightly-revalidate --open-issues` walks every merged submission, opens/comments/closes `stale-submission` GitHub issues on sha / EER drift.
+- [x] **8g. Secrets audit.** Four secrets in use, minimum-scope: `HF_WEBHOOK_SECRET` (shared, no API perms), `SPACE_COMMIT_TOKEN` (Space repo write only), `HF_BOT_TOKEN` (org dataset discussion write), `GH_PAT` (fine-grained, `Actions: Read+Write` on `lab260ru/speech_spoof_bench`).
+- [x] **8c. Configure HF webhooks.** Org-wide subscription on `SpeechAntiSpoofingBenchmarks`, trigger `Repo update`, target `https://speechantispoofingbenchmarks-speechantispoofingarena.hf.space/webhook`. End-to-end verified: HF PR-branch commit → 200 webhook → GH workflow → bot comment on discussion.
+
+**Bonus delivered alongside Phase 8**:
+- Local-dataset registry (`speech-spoof-bench/local-datasets.yaml` + `speech-spoof-bench local set|list|unset|show` + `--no-local` on `run`/`submit`/`validate-dataset`/`reproduce`). Lets `reproduce --scoring` read labels from a local parquet checkout instead of streaming from HF.
+
+**Done when**: opening an HF PR on LA → CI comment appears → maintainer merges → Arena reflects within 60s. All automatic. ✓
 
 ---
 

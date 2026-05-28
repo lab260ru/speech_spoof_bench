@@ -81,3 +81,38 @@ def test_one_new_submission_posts_one_comment(monkeypatch, tmp_path):
     assert repo == "Org/ASVspoof2019_LA" and pr == 42
     assert "speech-spoof-bench" in body and "submission merged" in body
     assert "<!-- ssb:badge --> sha=deadbeefcafe1234 path=submissions/aasist.yaml" in body
+
+
+def test_post_merge_comment_includes_tier_and_rank_badges(monkeypatch, tmp_path):
+    """The merged-PR comment body carries EER + tier + rank badge lines."""
+    api = make_api(
+        sha="deadbeefcafe1234",
+        parent="parent0000",
+        sha_files=["submissions/aasist.yaml", "submissions/README.md"],
+        parent_files=["submissions/README.md"],
+    )
+
+    def fake_dl(repo_id, filename, revision, repo_type):
+        p = tmp_path / filename.replace("/", "_")
+        if filename == "eval.yaml":
+            p.write_text(_eval_yaml())
+        else:
+            p.write_text(_good_yaml())
+        return str(p)
+    monkeypatch.setattr(post_merge_badge, "_download_at_revision", fake_dl)
+
+    posted = []
+    def fake_post(repo, pr, body):
+        posted.append(body)
+    monkeypatch.setattr(post_merge_badge, "_post_comment", fake_post)
+
+    rc = post_merge_badge.run(
+        repo="Org/ASVspoof2019_LA", pr=42, sha="deadbeefcafe1234",
+        api=api, gh_run_url="https://gh/run",
+    )
+    assert rc == 0
+    body = posted[0]
+    host = "speechantispoofingbenchmarks-speechantispoofingarena.hf.space"
+    assert f"https://img.shields.io/endpoint?url=https://{host}/badge/aasist/tier.json" in body
+    assert f"https://img.shields.io/endpoint?url=https://{host}/badge/aasist/rank.json" in body
+    assert "img.shields.io/badge/EER" in body  # original static EER badge too

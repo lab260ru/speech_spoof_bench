@@ -20,20 +20,43 @@ def _download_at_revision(repo_id: str, filename: str, revision: str, repo_type:
                            revision=revision, repo_type=repo_type)
 
 
+def _parent_sha(api: HfApi, repo: str, sha: str) -> str | None:
+    """Return the commit immediately preceding <sha> on the default branch.
+
+    list_repo_commits returns newest-first; the entry after <sha> is its
+    parent. Returns None if <sha> isn't found or is the first commit.
+    """
+    commits = list(api.list_repo_commits(repo_id=repo, repo_type="dataset"))
+    for i, c in enumerate(commits):
+        if c.commit_id == sha or c.commit_id.startswith(sha) or sha.startswith(c.commit_id):
+            return commits[i + 1].commit_id if i + 1 < len(commits) else None
+    return None
+
+
 def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
-    main_files = set(api.list_repo_files(repo_id=repo, repo_type="dataset"))
+    """Submission YAMLs added by the merge commit <sha>.
+
+    <sha> is a commit already on main (the merge), so we diff it against its
+    PARENT — not against current main. Diffing against main would always be
+    empty post-merge, since the file is already there. (This is the key
+    difference from verify_pr._changed_submissions, which diffs an open PR
+    branch against main where the file isn't yet present.)
+    """
     sha_files = set(api.list_repo_files(repo_id=repo, revision=sha, repo_type="dataset"))
     candidates = {
         f for f in sha_files
         if f.startswith("submissions/") and f.endswith(".yaml")
         and f.rsplit("/", 1)[-1] not in {"README.md", "results_template.yaml"}
     }
-    # Only detect *added* submission files — list_repo_files doesn't give us
-    # content diffs cheaply, and amended/corrected re-submissions are rare in
-    # this workflow. If needed later, fetch content hashes and compare. Same
-    # trade-off as verify_pr._changed_submissions.
-    added = candidates - main_files
-    return sorted(added)
+    parent = _parent_sha(api, repo, sha)
+    if parent is None:
+        # No parent (first commit) — treat every candidate as added.
+        return sorted(candidates)
+    parent_files = set(api.list_repo_files(repo_id=repo, revision=parent, repo_type="dataset"))
+    # Added by this merge = present at <sha> but not at its parent. Catches
+    # added files; amended/corrected re-submissions (content-only edits) are
+    # rare and out of scope, same as verify_pr.
+    return sorted(candidates - parent_files)
 
 
 def _primary_metric_at(api: HfApi, repo: str, revision: str) -> str:

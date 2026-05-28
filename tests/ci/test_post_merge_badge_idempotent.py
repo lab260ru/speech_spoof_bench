@@ -5,22 +5,23 @@ from unittest.mock import MagicMock
 
 from speech_spoof_bench.ci import post_merge_badge
 
-from .test_post_merge_badge_happy import _good_yaml, _eval_yaml
+from .test_post_merge_badge_happy import _good_yaml, _eval_yaml, make_api
 
 
 def test_existing_sentinel_skips_post(monkeypatch, tmp_path):
-    api = MagicMock()
-    api.list_repo_files.side_effect = [
-        ["submissions/README.md"],
-        ["submissions/aasist.yaml", "submissions/README.md"],
-    ]
     # Discussion already carries a comment with the sentinel for this sha+path.
     prior = MagicMock()
     prior.content = (
         "**speech-spoof-bench** — submission merged ✅\n"
         "<!-- ssb:badge --> sha=abc1234 path=submissions/aasist.yaml\n"
     )
-    api.get_discussion_details.return_value = MagicMock(events=[prior])
+    api = make_api(
+        sha="abc1234",
+        parent="parent0000",
+        sha_files=["submissions/aasist.yaml", "submissions/README.md"],
+        parent_files=["submissions/README.md"],
+        events=[prior],
+    )
 
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")

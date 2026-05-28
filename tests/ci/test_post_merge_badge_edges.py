@@ -7,12 +7,17 @@ import pytest
 
 from speech_spoof_bench.ci import post_merge_badge
 
-from .test_post_merge_badge_happy import _good_yaml, _eval_yaml
+from .test_post_merge_badge_happy import _good_yaml, _eval_yaml, make_api
 
 
 def test_no_submission_changes_returns_zero_no_comment(monkeypatch):
-    api = MagicMock()
-    api.list_repo_files.return_value = ["submissions/README.md"]
+    # Merge added nothing under submissions/ — sha and parent both have only README.
+    api = make_api(
+        sha="abc1234",
+        parent="parent0000",
+        sha_files=["submissions/README.md"],
+        parent_files=["submissions/README.md"],
+    )
     posted = []
     monkeypatch.setattr(post_merge_badge, "_post_comment",
                         lambda r, p, b: posted.append(b))
@@ -25,12 +30,12 @@ def test_no_submission_changes_returns_zero_no_comment(monkeypatch):
 
 def test_missing_hf_bot_token_prints_to_stdout(monkeypatch, tmp_path, capsys):
     monkeypatch.delenv("HF_BOT_TOKEN", raising=False)
-    api = MagicMock()
-    api.list_repo_files.side_effect = [
-        ["submissions/README.md"],
-        ["submissions/aasist.yaml", "submissions/README.md"],
-    ]
-    api.get_discussion_details.return_value = MagicMock(events=[])
+    api = make_api(
+        sha="abc1234",
+        parent="parent0000",
+        sha_files=["submissions/aasist.yaml", "submissions/README.md"],
+        parent_files=["submissions/README.md"],
+    )
 
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")
@@ -50,12 +55,12 @@ def test_missing_hf_bot_token_prints_to_stdout(monkeypatch, tmp_path, capsys):
 
 def test_primary_metric_missing_exits_nonzero(monkeypatch, tmp_path):
     """If the submission lacks the dataset's primary metric, return non-zero."""
-    api = MagicMock()
-    api.list_repo_files.side_effect = [
-        ["submissions/README.md"],
-        ["submissions/aasist.yaml", "submissions/README.md"],
-    ]
-    api.get_discussion_details.return_value = MagicMock(events=[])
+    api = make_api(
+        sha="abc1234",
+        parent="parent0000",
+        sha_files=["submissions/aasist.yaml", "submissions/README.md"],
+        parent_files=["submissions/README.md"],
+    )
 
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")

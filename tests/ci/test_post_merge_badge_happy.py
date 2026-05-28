@@ -22,15 +22,40 @@ def _eval_yaml():
     return "name: ASVspoof2019 LA\ntasks:\n  - split: test\n    metrics: [eer_percent]\n"
 
 
-def test_one_new_submission_posts_one_comment(monkeypatch, tmp_path):
+def _commit(cid):
+    c = MagicMock()
+    c.commit_id = cid
+    return c
+
+
+def make_api(*, sha, parent, sha_files, parent_files, events=None):
+    """Build a mock HfApi modelling the sha-vs-parent diff path.
+
+    list_repo_files responds by `revision` kwarg; list_repo_commits returns
+    [<sha>, <parent>] newest-first so `_parent_sha` resolves correctly.
+    """
     api = MagicMock()
-    # main has just README; sha adds aasist.yaml.
-    api.list_repo_files.side_effect = [
-        ["submissions/README.md"],                          # main
-        ["submissions/aasist.yaml", "submissions/README.md"],  # at sha
-    ]
-    # No prior comments on the discussion.
-    api.get_discussion_details.return_value = MagicMock(events=[])
+
+    def files(repo_id, revision=None, repo_type=None):
+        if revision == sha:
+            return list(sha_files)
+        if revision == parent:
+            return list(parent_files)
+        return list(parent_files)  # default = current main == parent here
+
+    api.list_repo_files.side_effect = files
+    api.list_repo_commits.return_value = [_commit(sha), _commit(parent)]
+    api.get_discussion_details.return_value = MagicMock(events=events or [])
+    return api
+
+
+def test_one_new_submission_posts_one_comment(monkeypatch, tmp_path):
+    api = make_api(
+        sha="deadbeefcafe1234",
+        parent="parent0000",
+        sha_files=["submissions/aasist.yaml", "submissions/README.md"],
+        parent_files=["submissions/README.md"],
+    )
 
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")

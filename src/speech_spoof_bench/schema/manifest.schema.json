@@ -21,7 +21,8 @@
         "required": ["name", "min_coverage"],
         "properties": {
           "name": {"type": "string", "minLength": 1},
-          "min_coverage": {"type": "number", "minimum": 0, "maximum": 1}
+          "min_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+          "color": {"type": "string", "minLength": 1}
         }
       }
     },
@@ -33,6 +34,21 @@
     "extended": {
       "type": "array",
       "items": {"$ref": "#/definitions/dataset_entry"}
+    },
+    "ranking": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "metric": {"type": "string", "minLength": 1},
+        "absence_penalty": {"type": "number"},
+        "gamma_aggregated": {"type": "number", "minimum": 0},
+        "gamma_pooled": {"type": "number", "minimum": 0},
+        "default_view": {"enum": ["aggregated", "pooled"]},
+        "weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        }
+      }
     }
   },
   "definitions": {

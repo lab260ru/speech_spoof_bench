@@ -14,6 +14,7 @@ from jsonschema import ValidationError, validate
 
 
 ARENA_URL = "https://huggingface.co/spaces/SpeechAntiSpoofingBenchmarks/SpeechAntiSpoofingArena"
+ARENA_HOST = "speechantispoofingbenchmarks-speechantispoofingarena.hf.space"
 
 
 class BadgeError(Exception):
@@ -90,6 +91,14 @@ def _fmt_value(value: float) -> str:
     return f"{round(float(value), 2):.2f}".rstrip("0").rstrip(".")
 
 
+def _endpoint_badge_md(label: str, slug: str, kind: str) -> str:
+    """Markdown for a dynamic shields-endpoint badge (kind = 'tier' | 'rank')
+    served by the arena, linking to the system's arena page."""
+    endpoint = f"https://{ARENA_HOST}/badge/{slug}/{kind}.json"
+    img = f"https://img.shields.io/endpoint?url={endpoint}"
+    return f"[![{label}]({img})]({ARENA_URL}?system={slug})"
+
+
 def _shields_url(metric: str, dataset_name: str, value_str: str, color: str) -> str:
     """Build a static shields.io badge URL.
 
@@ -151,8 +160,10 @@ def build_paste_comment(
         f"huggingface-cli upload <your-model-repo> result.yaml \\\n"
         f"  .eval_results/{dataset_canonical_id}/result.yaml\n"
         f"```\n\n"
-        f"### 2. Add the badge line to your README\n\n"
-        f"```markdown\n{badge_md}\n```\n\n"
+        f"### 2. Add the badge lines to your README\n\n"
+        f"```markdown\n{badge_md}\n"
+        f"{_endpoint_badge_md('arena tier', slug, 'tier')}\n"
+        f"{_endpoint_badge_md('arena rank', slug, 'rank')}\n```\n\n"
         f"<!-- ssb:badge --> sha={merge_sha} path={submission_path}\n\n"
         f"---\n"
         f"_🤖 [view CI run]({gh_run_url})_\n"

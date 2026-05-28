@@ -124,3 +124,18 @@ def test_long_float_value_rounded_in_badge():
 ])
 def test_fmt_value(value, expected):
     assert badge._fmt_value(value) == expected
+
+
+def test_comment_includes_tier_and_rank_endpoint_badges():
+    body = _build()
+    host = "speechantispoofingbenchmarks-speechantispoofingarena.hf.space"
+    assert f"https://img.shields.io/endpoint?url=https://{host}/badge/aasist/tier.json" in body
+    assert f"https://img.shields.io/endpoint?url=https://{host}/badge/aasist/rank.json" in body
+    assert body.count("?system=aasist)") >= 3  # eer + tier + rank click targets
+
+
+def test_endpoint_badge_md_builder():
+    md = badge._endpoint_badge_md("arena tier", "aasist", "tier")
+    assert md.startswith("[![arena tier](https://img.shields.io/endpoint?url=")
+    assert "/badge/aasist/tier.json" in md
+    assert md.endswith(f"({badge.ARENA_URL}?system=aasist)")

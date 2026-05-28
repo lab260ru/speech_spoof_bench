@@ -1,0 +1,37 @@
+name: post-merge-badge
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "HF dataset id (org/name)"
+        required: true
+        type: string
+      pr:
+        description: "HF PR / discussion number"
+        required: true
+        type: string
+      sha:
+        description: "Merge commit sha on the dataset main branch"
+        required: true
+        type: string
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .
+      - name: Post badge snippet
+        env:
+          HF_BOT_TOKEN: ${{ secrets.HF_BOT_TOKEN }}
+          GH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          speech-spoof-bench ci post-merge-badge \
+            --repo "${{ inputs.repo }}" \
+            --pr   "${{ inputs.pr }}" \
+            --sha  "${{ inputs.sha }}"

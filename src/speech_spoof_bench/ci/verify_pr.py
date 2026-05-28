@@ -115,8 +115,8 @@ def _post_comment(repo: str, pr: int, body: str) -> None:
         print(body)
         return
     api = HfApi(token=token)
-    api.comment_discussion_on_pr(repo_id=repo, repo_type="dataset",
-                                 discussion_num=pr, comment=body)
+    api.comment_discussion(repo_id=repo, repo_type="dataset",
+                           discussion_num=pr, comment=body)
 
 
 def run(*, repo: str, pr: int, branch: str,

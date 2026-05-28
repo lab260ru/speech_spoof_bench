@@ -13,6 +13,9 @@ import yaml
 from jsonschema import ValidationError, validate
 
 
+ARENA_URL = "https://huggingface.co/spaces/SpeechAntiSpoofingBenchmarks/SpeechAntiSpoofingArena"
+
+
 class BadgeError(Exception):
     """Raised on input that cannot produce a valid result.yaml or comment."""
 

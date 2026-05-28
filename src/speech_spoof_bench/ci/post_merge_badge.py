@@ -14,8 +14,6 @@ from .. import badge, submission
 
 logger = logging.getLogger(__name__)
 
-ARENA_URL = "https://huggingface.co/spaces/SpeechAntiSpoofingBenchmarks/SpeechAntiSpoofingArena"
-
 
 def _download_at_revision(repo_id: str, filename: str, revision: str, repo_type: str) -> str:
     return hf_hub_download(repo_id=repo_id, filename=filename,
@@ -30,6 +28,10 @@ def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
         if f.startswith("submissions/") and f.endswith(".yaml")
         and f.rsplit("/", 1)[-1] not in {"README.md", "results_template.yaml"}
     }
+    # Only detect *added* submission files — list_repo_files doesn't give us
+    # content diffs cheaply, and amended/corrected re-submissions are rare in
+    # this workflow. If needed later, fetch content hashes and compare. Same
+    # trade-off as verify_pr._changed_submissions.
     added = candidates - main_files
     return sorted(added)
 
@@ -103,7 +105,7 @@ def run(*, repo: str, pr: int, sha: str,
             primary = _primary_metric_at(api, dataset_id, dataset_rev)
             body = badge.build_paste_comment(
                 data,
-                arena_url=ARENA_URL,
+                arena_url=badge.ARENA_URL,
                 dataset_canonical_id=dataset_id,
                 primary_metric=primary,
                 submission_path=path,

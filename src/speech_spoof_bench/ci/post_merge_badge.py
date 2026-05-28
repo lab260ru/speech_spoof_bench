@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -16,13 +15,6 @@ from .. import badge, submission
 logger = logging.getLogger(__name__)
 
 ARENA_URL = "https://huggingface.co/spaces/SpeechAntiSpoofingBenchmarks/SpeechAntiSpoofingArena"
-
-
-@dataclass
-class Outcome:
-    path: str
-    posted: bool
-    notes: str
 
 
 def _download_at_revision(repo_id: str, filename: str, revision: str, repo_type: str) -> str:

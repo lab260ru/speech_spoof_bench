@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "speech-spoof-bench result.yaml (badge layer)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "system", "dataset", "scores", "arena", "artifact"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "slug", "paper"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "slug": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "paper": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["arxiv_id"],
+          "properties": {
+            "arxiv_id": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "split"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[^/]+/[^/]+$"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{7,40}$"},
+        "split": {"type": "string", "minLength": 1}
+      }
+    },
+    "scores": {
+      "type": "object",
+      "required": ["n_trials", "n_skipped"],
+      "minProperties": 3,
+      "properties": {
+        "n_trials": {"type": "integer", "minimum": 0},
+        "n_skipped": {"type": "integer", "minimum": 0}
+      },
+      "patternProperties": {
+        "^(?!n_trials$|n_skipped$).+$": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "arena": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "system_url"],
+      "properties": {
+        "url": {"type": "string", "pattern": "^https://"},
+        "system_url": {"type": "string", "pattern": "^https://"}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scores_url"],
+      "properties": {
+        "scores_url": {
+          "type": "string",
+          "pattern": "^https://huggingface\\.co/[^/]+/[^/]+/resolve/[0-9a-f]{7,40}/"
+        }
+      }
+    }
+  }
+}

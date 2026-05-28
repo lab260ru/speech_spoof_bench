@@ -94,3 +94,33 @@ def test_uses_color_for_high_eer():
         gh_run_url="https://gh/run",
     )
     assert "-lightgrey)" in body
+
+
+def test_long_float_value_rounded_in_badge():
+    """A high-precision metric value is rounded to 2 decimals for display."""
+    sub = {**_SUBMISSION,
+           "scores": {"eer_percent": 49.870836165873556, "n_trials": 1, "n_skipped": 0}}
+    body = badge.build_paste_comment(
+        sub, arena_url=_ARENA_URL,
+        dataset_canonical_id="Org/ASVspoof2019_LA", primary_metric="eer_percent",
+        submission_path="submissions/x.yaml", merge_sha="abc1234",
+        gh_run_url="https://gh/run",
+    )
+    # badge shows the rounded 49.87, not the raw float
+    assert "49.87%25" in body
+    assert "49.870836%25" not in body
+    # but result.yaml keeps full precision
+    assert "49.870836165873556" in body
+
+
+@pytest.mark.parametrize("value,expected", [
+    (49.870836165873556, "49.87"),
+    (1.23, "1.23"),
+    (1.20, "1.2"),
+    (1.0, "1"),
+    (0.0, "0"),
+    (3.14159, "3.14"),
+    (99.99, "99.99"),
+])
+def test_fmt_value(value, expected):
+    assert badge._fmt_value(value) == expected

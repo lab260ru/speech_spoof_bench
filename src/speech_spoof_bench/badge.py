@@ -84,14 +84,21 @@ def build_result_yaml(submission: dict, *, arena_url: str) -> str:
     return yaml.safe_dump(projected, sort_keys=False, default_flow_style=False)
 
 
-def _shields_url(metric: str, dataset_name: str, value: float, color: str) -> str:
+def _fmt_value(value: float) -> str:
+    """Format a metric value for display: round to 2 decimals, drop trailing
+    zeros so 49.870836… → '49.87', 1.20 → '1.2', 0.0 → '0'."""
+    return f"{round(float(value), 2):.2f}".rstrip("0").rstrip(".")
+
+
+def _shields_url(metric: str, dataset_name: str, value_str: str, color: str) -> str:
     """Build a static shields.io badge URL.
 
     Shields rules: `_` → real underscore, `__` → literal `_`. So pre-double
-    underscores in our segment text, then URL-encode the result.
+    underscores in our segment text, then URL-encode the result. `value_str` is
+    the already-formatted display value (without the trailing %).
     """
     label = quote(f"{metric.upper().replace('_', ' ')} on {dataset_name}".replace("_", "__"))
-    msg = quote(f"{value}%".replace("_", "__"))
+    msg = quote(f"{value_str}%".replace("_", "__"))
     return f"https://img.shields.io/badge/{label}-{msg}-{color}"
 
 
@@ -125,9 +132,10 @@ def build_paste_comment(
 
     result_yaml = build_result_yaml(submission, arena_url=arena_url)
     metric_label = _metric_display_for(primary_metric)
-    shields_url = _shields_url(metric_label, dataset_name, value, color)
+    value_str = _fmt_value(value)
+    shields_url = _shields_url(metric_label, dataset_name, value_str, color)
     badge_md = (
-        f"[![{metric_label} {value} on {dataset_name}]"
+        f"[![{metric_label} {value_str} on {dataset_name}]"
         f"({shields_url})]"
         f"({arena_url}?system={slug})"
     )

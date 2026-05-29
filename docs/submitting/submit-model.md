@@ -141,6 +141,12 @@ system:
 No paper yet? Point `paper` at the most relevant reference (e.g. the dataset paper) and
 say so in `description`.
 
+> **Paper policy.** A paper is what lets your model compete in the ranked tiers
+> (🥇 Gold / 🥈 Silver / 🥉 Bronze). **Proprietary or unpublished models may omit
+> `paper` entirely** — they're still welcome, but they appear in the dedicated
+> **🔓 Unpublished / Proprietary** tier and are left *unranked*, no matter how strong
+> their scores. Add a paper later to move into the ranked tiers.
+
 ## Step 6 — Open the submission PR
 
 One command does the rest — re-runs, uploads scores, writes the submission file, and

@@ -42,6 +42,18 @@ def test_tier_with_color_valid():
     validate(_m(tiers=[{"name": "gold", "min_coverage": 1.0, "color": "#FFD700"}]), _schema())
 
 
+def test_tier_with_requires_paper_valid():
+    validate(_m(tiers=[
+        {"name": "gold", "min_coverage": 1.0, "requires_paper": True},
+        {"name": "unpublished", "min_coverage": 0.0, "requires_paper": False},
+    ]), _schema())
+
+
+def test_non_boolean_requires_paper_rejected():
+    with pytest.raises(ValidationError):
+        validate(_m(tiers=[{"name": "gold", "min_coverage": 1.0, "requires_paper": "yes"}]), _schema())
+
+
 def test_bad_default_view_rejected():
     with pytest.raises(ValidationError):
         validate(_m({"ranking": {"default_view": "sideways"}}), _schema())

@@ -22,7 +22,8 @@
         "properties": {
           "name": {"type": "string", "minLength": 1},
           "min_coverage": {"type": "number", "minimum": 0, "maximum": 1},
-          "color": {"type": "string", "minLength": 1}
+          "color": {"type": "string", "minLength": 1},
+          "requires_paper": {"type": "boolean"}
         }
       }
     },

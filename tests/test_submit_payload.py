@@ -118,3 +118,42 @@ def test_payload_omits_notes_when_meta_lacks_it():
         submitted_at="2026-05-22",
     )
     assert "notes" not in payload or payload["notes"] is None
+
+
+def _result_yaml():
+    return {
+        "dataset": {"id": "Org/DS", "revision": "abc1234", "split": "test"},
+        "scores": {"eer_percent": 1.0, "n_trials": 10, "n_skipped": 0},
+        "artifact": {"bench_version": "speech-spoof-bench==0.1.0"},
+    }
+
+
+def _meta(extra_system=None):
+    system = {
+        "name": "AASIST", "slug": "aasist", "description": "x",
+        "code": "https://github.com/x/y", "checkpoint": "https://huggingface.co/x/y",
+        "paper": {"arxiv_id": "1", "url": "https://arxiv.org/abs/1", "bibtex": "@x{y}"},
+    }
+    if extra_system:
+        system.update(extra_system)
+    return {"system": system}
+
+
+def test_payload_includes_params_when_present():
+    payload = build_submission_payload(
+        result_yaml=_result_yaml(), meta=_meta({"params_millions": 52.3}),
+        scores_url="https://huggingface.co/x/y/resolve/abc1234/scores.txt",
+        scores_sha256="0" * 64, hf_username="u", contact="c@e.com",
+        submitted_at="2026-05-29",
+    )
+    assert payload["system"]["params_millions"] == 52.3
+
+
+def test_payload_omits_params_when_absent():
+    payload = build_submission_payload(
+        result_yaml=_result_yaml(), meta=_meta(),
+        scores_url="https://huggingface.co/x/y/resolve/abc1234/scores.txt",
+        scores_sha256="0" * 64, hf_username="u", contact="c@e.com",
+        submitted_at="2026-05-29",
+    )
+    assert "params_millions" not in payload["system"]

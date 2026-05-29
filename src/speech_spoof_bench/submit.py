@@ -97,6 +97,8 @@ def build_submission_payload(
         "submitter": {"hf_username": hf_username, "contact": contact},
         "submitted_at": submitted_at,
     }
+    if "params_millions" in sys_meta:
+        payload["system"]["params_millions"] = sys_meta["params_millions"]
     if "notes" in meta:
         payload["notes"] = meta["notes"]
     return payload

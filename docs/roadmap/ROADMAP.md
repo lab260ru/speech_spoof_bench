@@ -210,11 +210,11 @@ Spec: `docs/specs/2026-05-23-phase-8-cicd-design.md`. Plan: `docs/plans/2026-05-
 
 **Goal**: post-merge CI comment generates a paste-ready `.eval_results/<dataset>/result.yaml`; submitter pastes it; HF model page shows the leaderboard badge.
 
-- [ ] `src/speech_spoof_bench/badge.py` — `build_result_yaml` + `build_paste_comment` per §3.6.2.
-- [ ] `result.schema.json` — JSON Schema validator.
-- [ ] `ci post-merge-badge` CLI + `post-merge-badge.yml` workflow — posts a follow-up comment on the merged HF discussion.
-- [ ] `arena/webhook.py` — dispatches `post-merge-badge.yml` when a `refs/heads/main` event carries PR-merge metadata.
-- [ ] Manually verify once: paste into random-baseline model repo → badge renders on `huggingface.co/<you>/random-baseline-asas`.
+- [x] `src/speech_spoof_bench/badge.py` — `build_result_yaml` + `build_paste_comment` per §3.6.2.
+- [x] `result.schema.json` — JSON Schema validator.
+- [x] `ci post-merge-badge` CLI + `post-merge-badge.yml` workflow — posts a follow-up comment on the merged HF discussion.
+- [x] `arena/webhook.py` — dispatches `post-merge-badge.yml` when a `refs/heads/main` event carries PR-merge metadata.
+- [x] Manually verify once: paste into random-baseline model repo → badge renders on `huggingface.co/<you>/random-baseline-asas`.
 
 **Done when**: a backlink badge from the random baseline's model page to the Arena is live.
 

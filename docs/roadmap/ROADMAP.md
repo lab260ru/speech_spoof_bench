@@ -220,15 +220,21 @@ Spec: `docs/specs/2026-05-23-phase-8-cicd-design.md`. Plan: `docs/plans/2026-05-
 
 ---
 
-## Phase 10 — Arena polish
+## Phase 10 — Arena polish ✅
 
-Now that the system works, fill in the rest of §3.2:
+Spec: `docs/specs/2026-05-29-phase-10-arena-polish-design.md`. Plan: `docs/plans/2026-05-29-phase-10-arena-polish.md`.
 
-- [ ] System-detail page with paper rendering, BibTeX copy button, cached arXiv abstract.
-- [ ] Submit tab with the exact command + walkthrough.
-- [ ] Per-dataset paper column with arXiv badge.
-- [ ] About tab fully populated (subscribed datasets, last-refreshed per dataset, link to CI).
-- [ ] 📄 paper badge surfaced on rows.
+Design diverged from §3.2 by user direction: **no per-system detail page** — paper/BibTeX/model links surface inline (a row-select detail strip) instead. Two new analytical tabs were added (By model size, Over time). The `gradio_leaderboard` component was rejected (it pins `gradio<6.0`, conflicting with the Space's `gradio==6.14.0`, and lacks column pinning); the MTEB-style table uses native `gr.Dataframe(pinned_columns=…, datatype="markdown")`.
+
+- [x] **MTEB-style Overview + Per-dataset** — Rank+System pinned, metric columns scroll, sortable; clickable model names (→ checkpoint) and dataset chips (→ dataset repo); 📄 paper + ⧉ BibTeX inline.
+- [x] **Inline system detail strip** (replaces the per-system page) — description, params, paper/checkpoint/scores links, copy-able BibTeX `gr.Code`.
+- [x] **Submit tab** — renders `docs/submitting/{submit-model,submit-dataset}.md` from the package repo at the pinned sha (lazy `demo.load`, graceful fallback), plus the "can't run it yourself — write us" callout.
+- [x] **By model size tab** — params-vs-score scatter (view-aware Core-mean via `global_scores`, single-dataset override, coverage-shaped markers) + "no size declared" note. Backed by optional `system.params_millions` (submitter-declared).
+- [x] **Over time tab** — best-score-over-time step line per dataset + hybrid activity log (auto-derived model/verification events + curated `arena-manifest/CHANGELOG.yaml`).
+- [x] **Totals header** (N systems · N datasets · last refreshed) across tabs; About tab retained.
+- [x] **§3.3 verification gate** preserved — submissions missing a `reproduction:` block are skipped with a warning.
+
+**Deploy/verify** (manual, pending): bump the `speech-spoof-bench` pin in `arena/requirements.txt` to the Phase-10 package sha, push `arena/` + `arena-manifest/`, and visually verify all six tabs on the live Space.
 
 ---
 

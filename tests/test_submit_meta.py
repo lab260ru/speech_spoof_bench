@@ -45,11 +45,13 @@ def test_load_meta_accepts_no_notes(tmp_path: Path):
     assert "notes" not in out
 
 
-def test_load_meta_rejects_missing_paper(tmp_path: Path):
+def test_load_meta_accepts_missing_paper(tmp_path: Path):
+    # Paper is optional: proprietary/unpublished models may omit it. The Arena
+    # keeps such models out of the ranked tiers (dedicated lowest tier).
     data = {"system": dict(_GOOD["system"])}
     del data["system"]["paper"]
-    with pytest.raises(MetaValidationError):
-        load_meta(_write(tmp_path, data))
+    meta = load_meta(_write(tmp_path, data))
+    assert "paper" not in meta["system"]
 
 
 def test_load_meta_rejects_bad_slug(tmp_path: Path):

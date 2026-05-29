@@ -1,70 +1,126 @@
-# Submit a dataset
+# Submit a dataset — step-by-step
 
-Add a new anti-spoofing benchmark to the org so models can be evaluated on it. The
-flow is: **check license → scaffold → build parquet → validate → push → manifest PR**.
+This guide assumes no prior knowledge. By the end you'll have a new anti-spoofing
+benchmark in the org that models can be evaluated on.
 
-> 💡 Not sure if your dataset fits, or need help hosting it? Email
-> **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)**.
+> 💡 Not sure your dataset qualifies, or need help hosting large audio? Email
+> **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)** before you start — it can save
+> you a lot of work.
 
-## 1. Redistribution check (do this first)
+## What you're actually doing
 
-We only host datasets we can **redistribute under their upstream license**. If you
-can't legally rehost the audio, it's out of scope — loader-only / proxy repos are not
-accepted. Ship the verbatim `LICENSE.txt`.
+A "dataset" here is a Hugging Face (HF) **dataset repo** containing the audio (as
+parquet), a description, an evaluation config, and a folder where model results
+accumulate. You:
 
-## 2. Scaffold the repo skeleton
+1. confirm you're allowed to redistribute the audio,
+2. generate the standard repo skeleton,
+3. convert your audio into the canonical format,
+4. fill in the description / eval config / citation,
+5. validate locally until everything is green,
+6. push to HF and open a PR adding it to the Arena's manifest.
+
+## Prerequisites
+
+- **Python 3.10+** and a **Hugging Face account** (https://huggingface.co/join).
+- The HF CLI, logged in:
+  ```bash
+  pip install huggingface_hub && huggingface-cli login
+  ```
+- `pip install speech-spoof-bench`.
+- Membership/permission to push under the `SpeechAntiSpoofingBenchmarks` org (ask the
+  maintainer if you don't have it).
+
+## Step 1 — Redistribution check (do this FIRST)
+
+We only host datasets we can **legally redistribute under their original license**.
+
+- ✅ OK: the license permits rehosting the audio (you'll ship the verbatim
+  `LICENSE.txt`).
+- ❌ Not OK: "download it yourself" loader-only repos, or anything you can't legally
+  re-share.
+
+If you're unsure, email us before building anything.
+
+## Step 2 — Generate the repo skeleton
 
 ```bash
 speech-spoof-bench scaffold-dataset \
-  --name <Source><Year>_<Partition> --output-dir ./<name>
+  --name ASVspoof2021_DF --output-dir ./ASVspoof2021_DF
 ```
 
-Naming is `<Source><Year>_<Partition>` (e.g. `ASVspoof2019_LA`); real-world sets use a
-plain name (e.g. `InTheWild`).
+**Naming:** `<Source><Year>_<Partition>` for challenge sets (e.g. `ASVspoof2019_LA`);
+a plain name for real-world sets (e.g. `InTheWild`). This creates the standard files
+(README, `eval.yaml`, `submissions/`, a build script stub).
 
-## 3. Build the parquet to the canonical schema
+## Step 3 — Convert your audio to the canonical format
 
-Every row must be exactly:
+Build a parquet where **every row is exactly these four fields**:
 
-| field | type | notes |
+| field | type | meaning |
 |---|---|---|
-| `path` | string | stable, unique archive-relative path |
-| `audio` | Audio(16 kHz) | mono, resampled at build time |
-| `label` | ClassLabel `[bonafide, spoof]` | index 0 = bonafide |
-| `notes` | string (JSON) | must parse and contain a unique `utterance_id` |
+| `path` | string | a stable, **unique** path/id for the clip |
+| `audio` | Audio @ **16 kHz** | mono; resample during the build |
+| `label` | ClassLabel `[bonafide, spoof]` | **index 0 = bonafide**, 1 = spoof |
+| `notes` | string containing JSON | must parse and include a unique `utterance_id` |
 
-## 4. README, eval.yaml, citation
+Example `notes` value: `{"utterance_id": "LA_E_2834763", "speaker_id": "LA_0039"}`.
+The scorer only needs `utterance_id`; everything else in `notes` is informational.
 
-- **README frontmatter:** include the `arena-ready` tag (this is how the Arena
-  discovers the dataset) and the `arxiv:` list.
-- **`eval.yaml`:** the task config and the `metrics:` list (e.g. `eer_percent`). The
-  first metric is the dataset's *primary* metric used for ranking.
-- **Citation:** a section with the paper's arXiv link and a BibTeX block.
+## Step 4 — Fill in README, eval.yaml, and citation
 
-## 5. Validate until green
+- **README front-matter (YAML at the top):** include the **`arena-ready`** tag — this is
+  literally how the Arena discovers your dataset — plus the `arxiv:` id list, license,
+  and `pretty_name`.
+- **`eval.yaml`:** the task config and a `metrics:` list, e.g.:
+  ```yaml
+  metrics:
+    - eer_percent
+  ```
+  The **first** metric is the dataset's *primary* metric — the one the leaderboard ranks
+  by. `eer_percent` is the standard.
+- **Citation section** in the README body: the paper's arXiv link and a BibTeX block.
+
+## Step 5 — Validate until green
 
 ```bash
-speech-spoof-bench validate-dataset ./<name>
+speech-spoof-bench validate-dataset ./ASVspoof2021_DF
 ```
 
-This checks the schema, the label classes, `utterance_id` uniqueness, the 16 kHz
-sample rate, the README frontmatter, and `eval.yaml`. Fix everything it reports before
-pushing.
+This checks: the schema is exactly the four fields; labels are `[bonafide, spoof]`;
+`notes` parses and every `utterance_id` is unique; the audio is 16 kHz; the README
+front-matter has the required keys; and `eval.yaml` is well-formed with registered
+metrics. **Fix every issue it reports** before moving on — the maintainer runs the same
+check.
 
-## 6. Push, then open a manifest PR
+## Step 6 — Push, then open a manifest PR
 
-Push to `huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/<name>`, then open a PR on
-the **`arena-manifest`** repo adding your dataset under `core_set` or `extended` with a
-**pinned `revision`** (a commit sha — this is the exact version the Arena scores
-against).
+1. Push your validated repo to
+   `huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/<name>`.
+2. Open a pull request on the **`arena-manifest`** repo adding your dataset with a
+   **pinned `revision`** (a commit sha — the exact version models will be scored
+   against):
+   ```yaml
+   extended:
+     - id: SpeechAntiSpoofingBenchmarks/ASVspoof2021_DF
+       revision: <commit-sha>
+   ```
 
-## 7. Core vs Extended
+## Step 7 — Core vs Extended
 
-- **Core** datasets count toward tier coverage and the global rank.
-- **Extended** datasets are shown and rankable per-dataset, but don't gate tiers.
+- **Core** — counts toward tier coverage (Gold/Silver/Bronze) and the global rank.
+- **Extended** — shown and rankable on its own tab, but doesn't affect tiers.
 
-New datasets usually start in **Extended** and are promoted to **Core** once stable.
+New datasets normally start in **Extended** and get promoted to **Core** once they've
+proven stable and have a few submissions.
+
+## Common mistakes
+
+- **Audio not resampled to 16 kHz** — validation will reject it.
+- **Duplicate or missing `utterance_id`** — must be present and unique in `notes`.
+- **Forgot the `arena-ready` tag** — the Arena won't find the dataset without it.
+- **Unpinned manifest revision** — you must pin a commit sha, not a branch name.
 
 ---
 
-Questions? Email **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)**.
+Questions at any step? Email **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)**.

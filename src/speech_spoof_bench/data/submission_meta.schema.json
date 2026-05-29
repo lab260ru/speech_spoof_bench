@@ -24,7 +24,8 @@
             "url": {"type": "string", "format": "uri"},
             "bibtex": {"type": "string", "minLength": 1}
           }
-        }
+        },
+        "params_millions": {"type": "number", "minimum": 0}
       }
     },
     "notes": {"type": "string"}

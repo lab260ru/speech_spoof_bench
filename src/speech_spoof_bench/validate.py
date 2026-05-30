@@ -9,21 +9,27 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import yaml
-from datasets import ClassLabel
-from huggingface_hub import hf_hub_download
+from datasets import Audio, ClassLabel, Features, Value
 from tqdm.auto import tqdm
 
 from . import hf_fetch
+from .hf_fetch import hub_download as hf_hub_download
 from . import submission as sub_mod
-from .loader import resolve
+from .loader import DatasetSource, _parse_eval_yaml, resolve
 
 REQUIRED_README_KEYS = {
     "license", "language", "pretty_name", "task_categories",
     "size_categories", "configs", "tags", "arxiv",
 }
+
+
+def _looks_like_hf_id(spec: str) -> bool:
+    parts = spec.split("/")
+    return len(parts) == 2 and all(parts)
 
 
 @dataclass
@@ -134,21 +140,124 @@ def _list_submission_paths(
     return out
 
 
+def _remote_labels_file_checks(repo_id: str) -> list[CheckResult] | None:
+    """Validate online D4/D5 from data/labels.parquet when available.
+
+    This avoids pulling multi-GB audio parquet shards during routine online
+    validation. A full local validation still checks shard paths and audio.
+    """
+    try:
+        local = hf_hub_download(
+            repo_id=repo_id,
+            filename="data/labels.parquet",
+            repo_type="dataset",
+        )
+    except Exception:
+        return None
+
+    try:
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(local, columns=["utterance_id", "label"])
+        uids = table.column("utterance_id").to_pylist()
+        labels = table.column("label").to_pylist()
+    except Exception as exc:
+        return [
+            CheckResult("D4", False, f"labels.parquet read error: {exc}"),
+            CheckResult("D5", False, "skipped (labels.parquet read failed)"),
+        ]
+
+    missing = sum(1 for uid in uids if not uid)
+    duplicate_count = len(uids) - len(set(uids))
+    bad_labels = sorted({int(v) for v in labels if int(v) not in (0, 1)})
+    if missing or bad_labels:
+        return [
+            CheckResult(
+                "D4", False,
+                f"labels.parquet malformed: missing_uid={missing} bad_labels={bad_labels}",
+            ),
+            CheckResult("D5", False, "skipped (D4 failed)"),
+        ]
+    if duplicate_count:
+        return [
+            CheckResult("D4", True, f"labels.parquet ok ({len(uids)} rows)"),
+            CheckResult("D5", False, f"duplicate utterance_id count={duplicate_count}"),
+        ]
+    return [
+        CheckResult("D4", True, f"labels.parquet ok ({len(uids)} rows)"),
+        CheckResult(
+            "D5", True,
+            f"utterance_id uniqueness ok ({len(uids)} ids; path uniqueness requires local shards)",
+        ),
+    ]
+
+
+def _resolve_hf_metadata(repo_id: str):
+    eval_path = Path(
+        hf_hub_download(
+            repo_id=repo_id,
+            filename="eval.yaml",
+            repo_type="dataset",
+        )
+    )
+    meta = _parse_eval_yaml(eval_path)
+    source = DatasetSource(
+        spec=repo_id,
+        display_name=meta["name"],
+        slug=repo_id.split("/")[-1],
+        canonical_id=repo_id,
+        metrics=list(meta["metrics"]),
+        split=meta["split"],
+        is_local=False,
+        local_path=None,
+        revision=None,
+    )
+    features = Features({
+        "path": Value("string"),
+        "audio": Audio(sampling_rate=16000),
+        "label": ClassLabel(names=["bonafide", "spoof"]),
+        "notes": Value("string"),
+    })
+    return source, SimpleNamespace(features=features)
+
+
+def _resolve_for_validation(spec: str, *, force_remote: bool):
+    if Path(spec).is_dir():
+        return resolve(spec, streaming=True, force_remote=force_remote)
+    if _looks_like_hf_id(spec):
+        if not force_remote:
+            from . import local_registry
+            if local_registry.lookup(spec) is not None:
+                return resolve(spec, streaming=True, force_remote=False)
+        return _resolve_hf_metadata(spec)
+    return resolve(spec, streaming=True, force_remote=force_remote)
+
+
 def _check_dataset_side(
     spec: str, *, force_remote: bool = False,
 ) -> tuple[list[CheckResult], dict[str, Any]]:
     """Run D1–D7. Returns (checks, info_for_submission_checks)."""
     checks: list[CheckResult] = []
-    source, ds = resolve(spec, streaming=True, force_remote=force_remote)
+    source, ds = _resolve_for_validation(spec, force_remote=force_remote)
 
     # D1: schema columns
     first = None
+    feat = getattr(ds, "features", None)
     try:
-        first = next(iter(ds))
         expected = {"path", "audio", "label", "notes"}
-        actual = set(first.keys())
+        if source.is_local:
+            first = next(iter(ds))
+            actual = set(first.keys())
+        elif feat:
+            actual = set(feat.keys())
+        else:
+            actual = set()
         if expected == actual:
-            checks.append(CheckResult("D1", True, "schema matches v4"))
+            msg = (
+                "schema matches v4"
+                if source.is_local else "schema contract v4 (remote metadata fast path)"
+            )
+            checks.append(CheckResult("D1", True, msg))
         else:
             checks.append(CheckResult(
                 "D1", False,
@@ -159,7 +268,6 @@ def _check_dataset_side(
 
     # D2: ClassLabel names
     try:
-        feat = getattr(ds, "features", None)
         label_feat = feat.get("label") if feat else None
         if isinstance(label_feat, ClassLabel) and label_feat.names == ["bonafide", "spoof"]:
             checks.append(CheckResult("D2", True, "label classes ok"))
@@ -179,7 +287,19 @@ def _check_dataset_side(
 
     # D3: sampling rate + duration
     try:
-        if first is None:
+        if not source.is_local:
+            audio_feat = feat.get("audio") if feat else None
+            sr = getattr(audio_feat, "sampling_rate", None)
+            if isinstance(audio_feat, Audio) and sr == 16000:
+                checks.append(CheckResult(
+                    "D3", True,
+                    "sr=16000 (metadata; duration requires local audio decode)",
+                ))
+            else:
+                checks.append(CheckResult(
+                    "D3", False, f"audio feature sr={sr!r} (want 16000)",
+                ))
+        elif first is None:
             checks.append(CheckResult("D3", False, "first row unavailable"))
         else:
             audio = first["audio"]
@@ -211,64 +331,73 @@ def _check_dataset_side(
     # disable=None auto-silences when stderr isn't a TTY (CI logs, pipes), so it
     # never pollutes captured test output. No total: the source is a streaming
     # IterableDataset with no length, so the bar shows count + rate only.
-    try:
-        # D4/D5 only need `notes` + `path`. Push the column projection down to
-        # load time (real pushdown) so the Audio column is neither transferred
-        # (HF) nor decoded (local) — minutes -> seconds on a 181k/611k dataset.
-        # NOTE: a post-load select_columns() would skip the decode but still
-        # transfer the audio bytes over the network (see testing-and-pitfalls
-        # "Column projection myth"), so the projection must happen in resolve().
-        scan_ds = resolve(spec, streaming=True, columns=["notes", "path"])[1]
-        scan = tqdm(
-            scan_ds,
-            desc="D4/D5 scan",
-            unit="row",
-            unit_scale=True,
-            disable=None,
-        )
-        for row in scan:
-            raw_notes = row.get("notes")
-            note: dict | None = None
-            try:
-                note = json.loads(raw_notes) if raw_notes is not None else None
-            except Exception as e:
-                if sampled_for_d4 < 100 and not d4_failed:
-                    d4_failed = True
-                    d4_msg = f"notes JSON decode error: {e}"
-                note = None
-            if sampled_for_d4 < 100 and not d4_failed and note is not None:
-                if not note.get("utterance_id"):
-                    d4_failed = True
-                    d4_msg = "notes missing non-empty utterance_id"
-            if sampled_for_d4 < 100:
-                sampled_for_d4 += 1
+    remote_label_checks = (
+        _remote_labels_file_checks(source.canonical_id)
+        if not source.is_local else None
+    )
+    if remote_label_checks is not None:
+        checks.extend(remote_label_checks)
+    else:
+        try:
+            # D4/D5 only need `notes` + `path`. Push the column projection down to
+            # load time (real pushdown) so the Audio column is neither transferred
+            # (HF) nor decoded (local) — minutes -> seconds on a 181k/611k dataset.
+            # NOTE: a post-load select_columns() would skip the decode but still
+            # transfer the audio bytes over the network (see testing-and-pitfalls
+            # "Column projection myth"), so the projection must happen in resolve().
+            scan_ds = resolve(
+                spec, streaming=True, force_remote=force_remote, columns=["notes", "path"]
+            )[1]
+            scan = tqdm(
+                scan_ds,
+                desc="D4/D5 scan",
+                unit="row",
+                unit_scale=True,
+                disable=None,
+            )
+            for row in scan:
+                raw_notes = row.get("notes")
+                note: dict | None = None
+                try:
+                    note = json.loads(raw_notes) if raw_notes is not None else None
+                except Exception as e:
+                    if sampled_for_d4 < 100 and not d4_failed:
+                        d4_failed = True
+                        d4_msg = f"notes JSON decode error: {e}"
+                    note = None
+                if sampled_for_d4 < 100 and not d4_failed and note is not None:
+                    if not note.get("utterance_id"):
+                        d4_failed = True
+                        d4_msg = "notes missing non-empty utterance_id"
+                if sampled_for_d4 < 100:
+                    sampled_for_d4 += 1
 
-            uid = note.get("utterance_id") if isinstance(note, dict) else None
-            if uid:
-                if uid in utt_ids:
-                    dup_utt.add(uid)
-                utt_ids.add(uid)
-            p = row.get("path")
-            if p:
-                if p in paths:
-                    dup_path.add(p)
-                paths.add(p)
-        if d4_failed:
-            checks.append(CheckResult("D4", False, d4_msg))
-        else:
-            checks.append(CheckResult("D4", True, f"sampled {sampled_for_d4} rows"))
-        if not dup_utt and not dup_path:
-            checks.append(CheckResult(
-                "D5", True, f"uniqueness ok ({len(utt_ids)} ids, {len(paths)} paths)"
-            ))
-        else:
-            checks.append(CheckResult(
-                "D5", False,
-                f"duplicates: utt={len(dup_utt)} path={len(dup_path)}",
-            ))
-    except Exception as e:
-        checks.append(CheckResult("D4", False, f"iteration error: {e}"))
-        checks.append(CheckResult("D5", False, "skipped (iteration failed)"))
+                uid = note.get("utterance_id") if isinstance(note, dict) else None
+                if uid:
+                    if uid in utt_ids:
+                        dup_utt.add(uid)
+                    utt_ids.add(uid)
+                p = row.get("path")
+                if p:
+                    if p in paths:
+                        dup_path.add(p)
+                    paths.add(p)
+            if d4_failed:
+                checks.append(CheckResult("D4", False, d4_msg))
+            else:
+                checks.append(CheckResult("D4", True, f"sampled {sampled_for_d4} rows"))
+            if not dup_utt and not dup_path:
+                checks.append(CheckResult(
+                    "D5", True, f"uniqueness ok ({len(utt_ids)} ids, {len(paths)} paths)"
+                ))
+            else:
+                checks.append(CheckResult(
+                    "D5", False,
+                    f"duplicates: utt={len(dup_utt)} path={len(dup_path)}",
+                ))
+        except Exception as e:
+            checks.append(CheckResult("D4", False, f"iteration error: {e}"))
+            checks.append(CheckResult("D5", False, "skipped (iteration failed)"))
 
     # D6: README frontmatter
     try:

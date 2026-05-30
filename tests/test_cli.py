@@ -267,3 +267,33 @@ def test_ci_verify_pr_dispatches(monkeypatch):
     rc = cli.main(["ci", "verify-pr", "--repo", "Org/Foo", "--pr", "7", "--branch", "refs/pr/7"])
     assert rc == 0
     assert captured["args"] == ("Org/Foo", 7, "refs/pr/7")
+
+
+def test_ci_preview_manifest_dispatches(monkeypatch, tmp_path):
+    from speech_spoof_bench import cli
+    from speech_spoof_bench.ci import preview_manifest
+
+    captured = {}
+
+    def fake_run(*, manifest_path=None, repo=None, pr=None, branch=None):
+        captured["args"] = (manifest_path, repo, pr, branch)
+        return 0
+
+    monkeypatch.setattr(preview_manifest, "run", fake_run)
+    local_manifest = tmp_path / "manifest.yaml"
+    local_manifest.write_text("schema_version: 1\n")
+
+    rc = cli.main(["ci", "preview-manifest", "--manifest", str(local_manifest)])
+
+    assert rc == 0
+    assert captured["args"] == (local_manifest, None, None, None)
+
+
+def test_ci_preview_manifest_requires_manifest_or_repo_branch(capsys):
+    from speech_spoof_bench import cli
+
+    rc = cli.main(["ci", "preview-manifest", "--repo", "Org/manifest", "--pr", "7"])
+
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "provide --manifest or both --repo and --branch" in err

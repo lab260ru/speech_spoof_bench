@@ -60,6 +60,7 @@ Plus, on Hugging Face, an open-ended set of **dataset repos**
 | [developing/contributing-package.md](developing/contributing-package.md) | Working on the package itself: tests, schema bumps, releases, and the pin dance. |
 | [developing/arena-dev.md](developing/arena-dev.md) | Running and changing the Arena Space locally, then deploying. |
 | [developing/testing-and-pitfalls.md](developing/testing-and-pitfalls.md) | **"It worked on my machine."** The verification matrix and the full catalogue of things that silently break. |
+| [developing/maintainer-runbook.md](developing/maintainer-runbook.md) | Maintainer checklist for model PRs, dataset additions, manifest preview, live Arena checks, and cleanup. |
 
 ### Project history & planning
 

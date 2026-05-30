@@ -8,16 +8,17 @@ import os
 from pathlib import Path
 
 import yaml
-from huggingface_hub import HfApi, hf_hub_download
+from huggingface_hub import HfApi
 
-from .. import badge, submission
+from .. import badge, hf_fetch, submission
 
 logger = logging.getLogger(__name__)
 
 
 def _download_at_revision(repo_id: str, filename: str, revision: str, repo_type: str) -> str:
-    return hf_hub_download(repo_id=repo_id, filename=filename,
-                           revision=revision, repo_type=repo_type)
+    return str(hf_fetch.hub_download(
+        repo_id=repo_id, filename=filename, revision=revision, repo_type=repo_type
+    ))
 
 
 def _parent_sha(api: HfApi, repo: str, sha: str) -> str | None:
@@ -42,7 +43,7 @@ def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
     difference from verify_pr._changed_submissions, which diffs an open PR
     branch against main where the file isn't yet present.)
     """
-    sha_files = set(api.list_repo_files(repo_id=repo, revision=sha, repo_type="dataset"))
+    sha_files = set(hf_fetch.list_repo_files(repo, revision=sha, repo_type="dataset"))
     candidates = {
         f for f in sha_files
         if f.startswith("submissions/") and f.endswith(".yaml")
@@ -52,11 +53,22 @@ def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
     if parent is None:
         # No parent (first commit) — treat every candidate as added.
         return sorted(candidates)
-    parent_files = set(api.list_repo_files(repo_id=repo, revision=parent, repo_type="dataset"))
-    # Added by this merge = present at <sha> but not at its parent. Catches
-    # added files; amended/corrected re-submissions (content-only edits) are
-    # rare and out of scope, same as verify_pr.
-    return sorted(candidates - parent_files)
+    parent_files = set(hf_fetch.list_repo_files(repo, revision=parent, repo_type="dataset"))
+    added = candidates - parent_files
+    modified = {
+        path for path in candidates & parent_files
+        if _differs_between(repo, path, old_revision=parent, new_revision=sha)
+    }
+    return sorted(added | modified)
+
+
+def _differs_between(repo: str, path: str, *, old_revision: str, new_revision: str) -> bool:
+    try:
+        old = Path(_download_at_revision(repo, path, revision=old_revision, repo_type="dataset"))
+        new = Path(_download_at_revision(repo, path, revision=new_revision, repo_type="dataset"))
+    except Exception:  # noqa: BLE001
+        return True
+    return old.read_bytes() != new.read_bytes()
 
 
 def _primary_metric_at(api: HfApi, repo: str, revision: str) -> str:

@@ -36,12 +36,11 @@ def test_verdict_table_columns():
 def test_run_with_one_good_and_one_bad(monkeypatch, tmp_path):
     """End-to-end: fetched PR contains two YAMLs, one passes, one fails."""
     api = MagicMock()
-    api.list_repo_files.side_effect = [
-        # main:
-        ["submissions/a.yaml", "submissions/README.md", "submissions/results_template.yaml"],
-        # branch:
-        ["submissions/a.yaml", "submissions/b.yaml", "submissions/README.md"],
-    ]
+    def files(repo_id, revision=None, repo_type=None):
+        if revision == "refs/pr/42":
+            return ["submissions/a.yaml", "submissions/b.yaml", "submissions/README.md"]
+        return ["submissions/a.yaml", "submissions/README.md", "submissions/results_template.yaml"]
+    monkeypatch.setattr(verify_pr.hf_fetch, "list_repo_files", files)
     # b.yaml is added on the branch; a.yaml is identical to main (skipped).
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")
@@ -68,10 +67,11 @@ def test_run_with_one_good_and_one_bad(monkeypatch, tmp_path):
 
 def test_run_with_only_passing_submission_exits_zero(monkeypatch, tmp_path):
     api = MagicMock()
-    api.list_repo_files.side_effect = [
-        ["submissions/README.md"],
-        ["submissions/a.yaml", "submissions/README.md"],
-    ]
+    def files(repo_id, revision=None, repo_type=None):
+        if revision == "refs/pr/1":
+            return ["submissions/a.yaml", "submissions/README.md"]
+        return ["submissions/README.md"]
+    monkeypatch.setattr(verify_pr.hf_fetch, "list_repo_files", files)
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")
         p.write_text(_good_yaml())
@@ -84,9 +84,32 @@ def test_run_with_only_passing_submission_exits_zero(monkeypatch, tmp_path):
 
 def test_run_with_zero_changed_submissions_exits_zero(monkeypatch):
     api = MagicMock()
-    api.list_repo_files.return_value = ["submissions/README.md"]
+    monkeypatch.setattr(
+        verify_pr.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: ["submissions/README.md"],
+    )
     posted = []
     monkeypatch.setattr(verify_pr, "_post_comment", lambda r, p, b: posted.append(b))
     rc = verify_pr.run(repo="Org/Foo", pr=2, branch="refs/pr/2", api=api, gh_run_url="x")
     assert rc == 0
     assert posted and "no submission changes" in posted[0]
+
+
+def test_changed_submissions_detects_modified_yaml(monkeypatch, tmp_path):
+    api = MagicMock()
+
+    def files(repo_id, revision=None, repo_type=None):
+        return ["submissions/a.yaml", "submissions/README.md"]
+
+    def fake_download(repo_id, filename, revision, repo_type):
+        p = tmp_path / f"{revision or 'main'}_{filename.replace('/', '_')}"
+        p.write_text("branch\n" if revision == "refs/pr/3" else "main\n")
+        return str(p)
+
+    monkeypatch.setattr(verify_pr.hf_fetch, "list_repo_files", files)
+    monkeypatch.setattr(verify_pr, "_download_at_revision", fake_download)
+
+    assert verify_pr._changed_submissions(api, "Org/Foo", "refs/pr/3") == [
+        "submissions/a.yaml"
+    ]

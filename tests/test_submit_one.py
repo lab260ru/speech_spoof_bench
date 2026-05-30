@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -195,3 +196,61 @@ def test_submit_one_yaml_is_schema_valid(
     assert parsed["system"]["slug"] == "rb-phase7b"
     assert parsed["submitter"] == {"hf_username": "u", "contact": "c@example.com"}
     assert parsed["dataset"]["revision"] == "deadbee"
+
+
+def test_resolve_dataset_slug_hf_uses_eval_yaml_without_loading_dataset(
+    tmp_path: Path, fake_hf_api, monkeypatch
+):
+    eval_yaml = tmp_path / "eval.yaml"
+    eval_yaml.write_text(
+        "name: Tiny\n"
+        "tasks:\n"
+        "  - id: antispoofing_eval\n"
+        "    split: test\n"
+        "    metrics: [eer_percent]\n"
+    )
+    fake_hf_api.repo_info.return_value.sha = "abcdef1234"
+
+    monkeypatch.setattr(submit_mod.hf_fetch, "hub_download", lambda **kw: eval_yaml)
+    monkeypatch.setattr(submit_mod.hf_fetch, "repo_sha", lambda *a, **kw: "abcdef1234")
+
+    def boom(*args, **kwargs):
+        raise AssertionError("submit metadata resolution must not load the dataset")
+
+    monkeypatch.setattr("speech_spoof_bench.loader.resolve", boom)
+
+    assert submit_mod._resolve_dataset_slug(
+        "Org/Tiny", fake_hf_api, force_remote=True
+    ) == ("Org/Tiny", "Tiny", "abcdef1234", "test")
+
+
+def test_resolve_dataset_slug_existing_local_path_uses_loader(
+    tmp_path: Path, fake_hf_api, monkeypatch
+):
+    local_ds = tmp_path / "data" / "tiny"
+    local_ds.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    fake_hf_api.repo_info.return_value.sha = "localsha"
+
+    monkeypatch.setattr(
+        submit_mod.hf_fetch,
+        "hub_download",
+        lambda **kw: (_ for _ in ()).throw(
+            AssertionError("existing local dataset paths must not hit the Hub")
+        ),
+    )
+    monkeypatch.setattr(submit_mod.hf_fetch, "repo_sha", lambda *a, **kw: "localsha")
+
+    source = SimpleNamespace(
+        canonical_id="Local/Tiny",
+        slug="Tiny",
+        split="test",
+    )
+    monkeypatch.setattr(
+        "speech_spoof_bench.loader.resolve",
+        lambda spec, **kw: (source, None),
+    )
+
+    assert submit_mod._resolve_dataset_slug(
+        "data/tiny", fake_hf_api, force_remote=False
+    ) == ("Local/Tiny", "Tiny", "localsha", "test")

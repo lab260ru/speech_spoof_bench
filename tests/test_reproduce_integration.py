@@ -8,9 +8,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from huggingface_hub import hf_hub_download
-
-from speech_spoof_bench import reproduce
+from speech_spoof_bench import hf_fetch, reproduce
 
 
 def _hf_cache_size(root: Path, substring: str) -> int:
@@ -28,7 +26,7 @@ def _hf_cache_size(root: Path, substring: str) -> int:
 
 def test_random_baseline_real(capsys):
     # Pull the live submission YAML to a temp file.
-    local = hf_hub_download(
+    local = hf_fetch.hub_download(
         repo_id="SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA",
         filename="submissions/random-baseline.yaml",
         repo_type="dataset",

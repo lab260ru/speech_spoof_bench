@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -37,6 +38,78 @@ def _parse_scores_txt(path: Path) -> dict[str, float]:
 # Process-level memo of immutable labels, keyed by (dataset_id, revision).
 _LABEL_CACHE: dict[tuple[str, str], dict[str, int]] = {}
 
+_SHARD_RE = re.compile(r"^data/test-\d{5}-of-\d{5}\.parquet$")
+
+
+def _shard_paths(api, dataset_id: str, revision: str) -> list[str]:
+    del api  # get_paths_info still needs HfApi; file listing is bounded here.
+    files = hf_fetch.list_repo_files(
+        dataset_id,
+        repo_type="dataset",
+        revision=revision,
+    )
+    return sorted(path for path in files if _SHARD_RE.match(path))
+
+
+def _info_fingerprint(info) -> tuple[str, int]:
+    lfs = getattr(info, "lfs", None)
+    sha = getattr(lfs, "sha256", None) if lfs is not None else None
+    size = getattr(lfs, "size", None) if lfs is not None else None
+    if sha is None:
+        sha = getattr(info, "blob_id", "")
+    if size is None:
+        size = getattr(info, "size", -1)
+    return str(sha), int(size)
+
+
+def _shard_fingerprints(api, dataset_id: str, revision: str):
+    paths = _shard_paths(api, dataset_id, revision)
+    if not paths:
+        return None
+    infos = api.get_paths_info(
+        dataset_id,
+        paths,
+        repo_type="dataset",
+        revision=revision,
+    )
+    out = {info.path: _info_fingerprint(info) for info in infos}
+    if set(out) != set(paths):
+        return None
+    return out
+
+
+def _download_main_labels_if_shards_match(dataset_id: str, revision: str):
+    """Use main's labels.parquet only when its test shards match revision.
+
+    Some legacy submissions are pinned to dataset commits created before the
+    labels fast-path artifact existed. If the current main branch still has
+    byte-identical test shards, its labels file is equivalent to one generated
+    at the pinned revision and avoids re-streaming multi-GB audio parquet.
+    """
+    if revision == "main":
+        return None
+    try:
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+        pinned = _shard_fingerprints(api, dataset_id, revision)
+        current = _shard_fingerprints(api, dataset_id, "main")
+        if pinned is None or pinned != current:
+            return None
+        local = hf_fetch.hub_download(
+            repo_id=dataset_id,
+            filename="data/labels.parquet",
+            repo_type="dataset",
+            revision="main",
+        )
+        return Path(local)
+    except Exception as exc:
+        logger.debug(
+            "compatible main labels.parquet unavailable for %s@%s: %s",
+            dataset_id, revision, exc,
+        )
+        return None
+
 
 def _download_labels_file(dataset_id: str, revision: str):
     """Download ``data/labels.parquet`` from the pinned dataset revision.
@@ -46,8 +119,7 @@ def _download_labels_file(dataset_id: str, revision: str):
     Never raises: the labels file is a pure optimization.
     """
     try:
-        from huggingface_hub import hf_hub_download
-        local = hf_hub_download(
+        local = hf_fetch.hub_download(
             repo_id=dataset_id,
             filename="data/labels.parquet",
             repo_type="dataset",
@@ -56,7 +128,7 @@ def _download_labels_file(dataset_id: str, revision: str):
         return Path(local)
     except Exception as exc:
         logger.debug("labels.parquet unavailable for %s@%s: %s", dataset_id, revision, exc)
-        return None
+        return _download_main_labels_if_shards_match(dataset_id, revision)
 
 
 def _stream_labels_from_shards(dataset_id, split, revision, *, mapped):

@@ -26,10 +26,17 @@ import yaml
 from huggingface_hub import CommitOperationAdd, HfApi
 from jsonschema import ValidationError, validate
 
+from . import hf_fetch
+
 _META_SCHEMA_PACKAGE = "speech_spoof_bench.data"
 _META_SCHEMA_FILENAME = "submission_meta.schema.json"
 
 _LOG = logging.getLogger(__name__)
+
+
+def _looks_like_hf_id(spec: str) -> bool:
+    parts = spec.split("/")
+    return len(parts) == 2 and all(parts)
 
 
 class MetaValidationError(ValueError):
@@ -170,15 +177,41 @@ def _resolve_dataset_slug(
     """Resolve `spec` to (canonical_id, slug, revision, split).
 
     Slug is the last path segment (matches DatasetSource.slug for HF specs).
-    Revision is the current main-branch sha from HfApi.repo_info — we want the
+    Revision is the current main-branch sha from the Hub API — we want the
     state the run scored against, even though `loader.resolve` returns None for
     HF specs today.
     """
-    from .loader import resolve as _resolve
+    from .loader import _parse_eval_yaml, resolve as _resolve
+
+    if _looks_like_hf_id(spec) and (force_remote or not Path(spec).exists()):
+        if not force_remote:
+            from . import local_registry
+            if local_registry.lookup(spec) is not None:
+                source, _ = _resolve(spec, streaming=True, force_remote=False)
+                return (
+                    source.canonical_id,
+                    source.slug,
+                    hf_fetch.repo_sha(source.canonical_id, repo_type="dataset"),
+                    source.split,
+                )
+
+        eval_path = Path(
+            hf_fetch.hub_download(
+                repo_id=spec,
+                filename="eval.yaml",
+                repo_type="dataset",
+            )
+        )
+        meta = _parse_eval_yaml(eval_path)
+        return spec, spec.split("/")[-1], hf_fetch.repo_sha(spec, repo_type="dataset"), meta["split"]
 
     source, _ = _resolve(spec, streaming=True, force_remote=force_remote)
-    info = api.repo_info(repo_id=source.canonical_id, repo_type="dataset")
-    return source.canonical_id, source.slug, info.sha, source.split
+    return (
+        source.canonical_id,
+        source.slug,
+        hf_fetch.repo_sha(source.canonical_id, repo_type="dataset"),
+        source.split,
+    )
 
 
 def _run_benchmark(

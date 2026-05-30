@@ -52,10 +52,10 @@ requests.post(
 dispatch is identical but targets `post-merge-badge.yml` with `inputs={repo, pr, sha}`,
 and is **fire-and-log** (errors logged, don't fail the webhook).
 
-## The three GitHub Actions workflows
+## The four GitHub Actions workflows
 
 All live in `.github/workflows/` of the package repo. Each does the same boilerplate:
-checkout → setup Python 3.11 → `pip install -e .` → run a `speech-spoof-bench ci ...`
+checkout → setup Python → install the package → run a `speech-spoof-bench ci ...`
 command. They differ only in trigger and command.
 
 ### `verify-hf-pr.yml` — verify a PR
@@ -105,6 +105,21 @@ comment, and post it. Idempotent via a sentinel:
 `<!-- ssb:badge --> sha={sha} path={path}` — if the discussion already contains it, the
 badge is skipped (no duplicates). → [badges.md](badges.md)
 
+### `preview-manifest.yml` — preview an Arena manifest PR
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      repo:   { description: "HF dataset repo containing manifest.yaml", required: true }
+      pr:     { description: "HF PR/discussion number to comment on", required: true }
+      branch: { description: "HF ref to preview, e.g. refs/pr/42", required: true }
+```
+Runs `speech-spoof-bench ci preview-manifest --repo … --pr … --branch …`. It downloads
+the candidate `manifest.yaml`, compares its dataset IDs to `main`, walks every listed
+dataset's verified submissions, and posts an Arena-like preview: dataset count, displayable
+row count, warning count, added datasets, and removed datasets. Exit 0 only when the preview
+has no warnings.
+
 ## Secrets & env vars — the complete table
 
 | Name | Lives in | Used by | Purpose |
@@ -114,10 +129,12 @@ badge is skipped (no duplicates). → [badges.md](badges.md)
 | `GH_VERIFY_WORKFLOW_REPO` | HF Space env (optional) | `arena/webhook.py` | Target repo for dispatch. Default `lab260ru/speech_spoof_bench` (override for a fork). |
 | `SPACE_COMMIT_TOKEN` | HF Space secrets | `arena/cache_store.py` | HF token to commit `cache.json` back to the Space. |
 | `ARENA_SPACE_REPO` | HF Space env (optional) | `arena/cache_store.py` | Space repo id. Default `SpeechAntiSpoofingBenchmarks/SpeechAntiSpoofingArena`. |
-| `HF_BOT_TOKEN` | GitHub Actions secret | `ci/verify_pr.py`, `ci/post_merge_badge.py`, `ci/nightly.py` | HF token to comment on dataset discussions. |
+| `HF_BOT_TOKEN` | GitHub Actions secret | `ci/verify_pr.py`, `ci/post_merge_badge.py`, `ci/nightly.py`, `ci/preview_manifest.py`, `hf_fetch.py` fallback | HF token to comment on dataset discussions and, when `HF_TOKEN` is absent, authenticate Hub downloads. |
 | `GH_TOKEN` / `GITHUB_TOKEN` | GitHub Actions (built-in) | `ci/nightly.py` | The `gh` CLI for issue management. |
 | `GH_RUN_URL` | GitHub Actions (composed) | `ci/verify_pr.py`, `ci/post_merge_badge.py` | Link back to the CI run in comments. Defaults to a hardcoded `lab260ru` URL if absent. |
-| `HF_TOKEN` | local / runner env | `hf_fetch.py` | Auth for downloading (private) HF artifacts. |
+| `HF_TOKEN` | local / runner env | `hf_fetch.py` | Preferred auth for downloading (private) HF artifacts. |
+| `SSB_HF_TIMEOUT` / `SSB_HF_ATTEMPTS` / `SSB_HF_RETRY_SLEEP` | local / runner env | `hf_fetch.py` | Optional bounds for Hub downloads and metadata requests. Defaults: 20 s, 3 attempts, 1 s sleep. |
+| `SSB_ARENA_MANIFEST_REPO` / `SSB_ARENA_MANIFEST_REVISION` | local / Space env | `manifest.py`, Arena ingest | Point a staging/local Arena at a manifest repo/ref other than production `main`. |
 
 (See the project memory for which concrete tokens are provisioned — `project_phase8_secrets`.)
 
@@ -131,7 +148,9 @@ badge is skipped (no duplicates). → [badges.md](badges.md)
 - **New dataset added to the manifest** isn't routed by the webhook until the Arena does a
   `force_refresh` ingest (which any subscribed event triggers) — until then it's "not
   subscribed".
-- **No retries** anywhere — a transient HF/network blip fails that one PR verification.
+- **Hub/network stalls** are bounded for package metadata/file calls through `hf_fetch.py`
+  (timeouts + retries). Raw third-party calls outside that wrapper still need review before
+  being added to CI.
 - `nightly.py` needs `gh` on the runner (present on `ubuntu-latest`) and uncaught `gh`
   failures will error the step.
 

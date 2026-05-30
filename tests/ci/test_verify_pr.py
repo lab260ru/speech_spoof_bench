@@ -94,3 +94,22 @@ def test_run_with_zero_changed_submissions_exits_zero(monkeypatch):
     rc = verify_pr.run(repo="Org/Foo", pr=2, branch="refs/pr/2", api=api, gh_run_url="x")
     assert rc == 0
     assert posted and "no submission changes" in posted[0]
+
+
+def test_changed_submissions_detects_modified_yaml(monkeypatch, tmp_path):
+    api = MagicMock()
+
+    def files(repo_id, revision=None, repo_type=None):
+        return ["submissions/a.yaml", "submissions/README.md"]
+
+    def fake_download(repo_id, filename, revision, repo_type):
+        p = tmp_path / f"{revision or 'main'}_{filename.replace('/', '_')}"
+        p.write_text("branch\n" if revision == "refs/pr/3" else "main\n")
+        return str(p)
+
+    monkeypatch.setattr(verify_pr.hf_fetch, "list_repo_files", files)
+    monkeypatch.setattr(verify_pr, "_download_at_revision", fake_download)
+
+    assert verify_pr._changed_submissions(api, "Org/Foo", "refs/pr/3") == [
+        "submissions/a.yaml"
+    ]

@@ -54,10 +54,21 @@ def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
         # No parent (first commit) — treat every candidate as added.
         return sorted(candidates)
     parent_files = set(hf_fetch.list_repo_files(repo, revision=parent, repo_type="dataset"))
-    # Added by this merge = present at <sha> but not at its parent. Catches
-    # added files; amended/corrected re-submissions (content-only edits) are
-    # rare and out of scope, same as verify_pr.
-    return sorted(candidates - parent_files)
+    added = candidates - parent_files
+    modified = {
+        path for path in candidates & parent_files
+        if _differs_between(repo, path, old_revision=parent, new_revision=sha)
+    }
+    return sorted(added | modified)
+
+
+def _differs_between(repo: str, path: str, *, old_revision: str, new_revision: str) -> bool:
+    try:
+        old = Path(_download_at_revision(repo, path, revision=old_revision, repo_type="dataset"))
+        new = Path(_download_at_revision(repo, path, revision=new_revision, repo_type="dataset"))
+    except Exception:  # noqa: BLE001
+        return True
+    return old.read_bytes() != new.read_bytes()
 
 
 def _primary_metric_at(api: HfApi, repo: str, revision: str) -> str:

@@ -17,6 +17,7 @@ from huggingface_hub import HfApi
 from .. import reproduce, submission
 from ..manifest import fetch_manifest
 from ..submission import list_submission_files, fetch_submission
+from . import green_store
 
 logger = logging.getLogger(__name__)
 LABEL = "stale-submission"
@@ -37,26 +38,41 @@ def _list_submission_files(dataset_id: str, **kw) -> list[str]:
     return list_submission_files(dataset_id, **kw)
 
 
-def _check_submission(dataset_id: str, path: str) -> Failure | None:
-    try:
-        data = fetch_submission(dataset_id, path)
-    except submission.SubmissionValidationError as e:
-        return Failure(dataset_id, path.rsplit("/", 1)[-1].removesuffix(".yaml"),
-                       f"schema: {e}")
-
+def _check_submission_data(dataset_id: str, data: dict) -> Failure | None:
+    """Run reproduce --scoring on an already-fetched submission dict."""
+    import os
     import tempfile
     import yaml as _yaml
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
         _yaml.safe_dump(data, fh)
         local = fh.name
-    rc = reproduce.run_scoring(local, tolerance=1e-6)
+    try:
+        rc = reproduce.run_scoring(local, tolerance=1e-6)
+    finally:
+        try:
+            os.unlink(local)
+        except OSError:
+            pass
     if rc != 0:
-        return Failure(dataset_id, data["system"]["slug"], "reproduce --scoring failed (see job log)")
+        return Failure(dataset_id, data["system"]["slug"],
+                       "reproduce --scoring failed (see job log)")
     return None
 
 
-def collect_failures() -> list[Failure]:
+def _check_submission(dataset_id: str, path: str) -> Failure | None:
+    # Retained as a path-based convenience wrapper (collect_failures inlines this flow).
+    try:
+        data = fetch_submission(dataset_id, path)
+    except submission.SubmissionValidationError as e:
+        return Failure(dataset_id, path.rsplit("/", 1)[-1].removesuffix(".yaml"),
+                       f"schema: {e}")
+    return _check_submission_data(dataset_id, data)
+
+
+def collect_failures(*, full: bool = False) -> list[Failure]:
     failures: list[Failure] = []
+    store = green_store.load(green_store.DEFAULT_STORE_PATH)
+    n_skipped = n_verified = 0
     m = _fetch_manifest()
     for entry in m.get("core_set", []) + m.get("extended", []):
         did = entry["id"]
@@ -66,9 +82,27 @@ def collect_failures() -> list[Failure]:
             failures.append(Failure(did, "<list>", f"list failed: {exc}"))
             continue
         for p in paths:
-            f = _check_submission(did, p)
+            try:
+                data = fetch_submission(did, p)
+            except submission.SubmissionValidationError as e:
+                failures.append(Failure(
+                    did, p.rsplit("/", 1)[-1].removesuffix(".yaml"), f"schema: {e}"))
+                continue
+            slug = data["system"]["slug"]
+            sha = data["artifact"]["scores_sha256"]
+            rev = data["dataset"]["revision"]
+            if not full and green_store.is_green(store, did, slug, sha, rev):
+                n_skipped += 1
+                logger.info("nightly skip (unchanged/green): %s/%s", did, slug)
+                continue
+            n_verified += 1
+            f = _check_submission_data(did, data)
             if f is not None:
                 failures.append(f)
+            else:
+                green_store.record_green(store, did, slug, sha, rev)
+    green_store.save(store, green_store.DEFAULT_STORE_PATH)
+    logger.info("nightly: %d verified, %d skipped", n_verified, n_skipped)
     return failures
 
 
@@ -124,8 +158,8 @@ def manage_issues(*, failures: list[Failure], api=None) -> None:
             api.close_issue(issue["number"])
 
 
-def run(*, open_issues: bool) -> int:
-    failures = collect_failures()
+def run(*, open_issues: bool, full: bool = False) -> int:
+    failures = collect_failures(full=full)
     for f in failures:
         logger.warning("nightly failure: %s/%s — %s", f.dataset_id, f.slug, f.reason)
     if open_issues:

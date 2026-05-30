@@ -64,9 +64,12 @@ def test_load_dataset_receives_columns_kwarg():
 
         return FakeDS()
 
-    with patch("speech_spoof_bench.reproduce.load_dataset",
-               side_effect=fake_load_dataset):
-        labels = reproduce._stream_labels("x/y", "test", "deadbeef")
+    import speech_spoof_bench.reproduce as _rep
+    _rep._LABEL_CACHE.clear()
+    with patch("speech_spoof_bench.reproduce._download_labels_file", return_value=None):
+        with patch("speech_spoof_bench.reproduce.load_dataset",
+                   side_effect=fake_load_dataset):
+            labels = reproduce._stream_labels("x/y", "test", "deadbeef")
 
     assert captured["kwargs"].get("columns") == ["notes", "label"]
     assert captured["kwargs"].get("streaming") is True
@@ -183,7 +186,7 @@ def test_unknown_metric(tmp_path):
 
 
 def test_stream_labels_uses_local_registry(monkeypatch, tmp_path):
-    """When dataset_id is mapped locally, _stream_labels reads from local parquet."""
+    """Falls back to local parquet shards when no labels.parquet is present."""
     import pyarrow as pa
     import pyarrow.parquet as pq
     from speech_spoof_bench import local_registry as lr
@@ -213,6 +216,7 @@ def test_stream_labels_uses_local_registry(monkeypatch, tmp_path):
             {"label": 1, "notes": '{"utterance_id":"u2"}'},
         ])
     monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+    reproduce._LABEL_CACHE.clear()
 
     labels = reproduce._stream_labels("Org/Foo", "test", "deadbee")
     assert labels == {"u1": 0, "u2": 1}
@@ -236,7 +240,135 @@ def test_stream_labels_force_remote_bypasses_registry(monkeypatch, tmp_path):
         seen["kwargs"] = kwargs
         return iter([])
     monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+    monkeypatch.setattr("speech_spoof_bench.reproduce._download_labels_file",
+                        lambda did, rev: None)
+    reproduce._LABEL_CACHE.clear()
 
     reproduce._stream_labels("Org/Foo", "test", "deadbee", force_remote=True)
     # force_remote bypasses the registry → HF code path → first positional is the dataset id.
     assert seen["args"][0] == "Org/Foo"
+
+
+def test_stream_labels_reads_local_labels_file(monkeypatch, tmp_path):
+    """A local mapped dir with labels.parquet is read directly (no shard stream)."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from speech_spoof_bench import local_registry as lr
+
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "eval.yaml").write_text("name: t\n")
+    # A shard exists, but the labels file should win.
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    pq.write_table(
+        pa.table({"utterance_id": pa.array(["u1", "u2"], pa.string()),
+                  "label": pa.array([0, 1], pa.int8())}),
+        d / "data" / "labels.parquet",
+    )
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    lr.set("Org/Foo", d)
+
+    def boom(*a, **k):
+        raise AssertionError("load_dataset must not be called when labels.parquet exists")
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", boom)
+    reproduce._LABEL_CACHE.clear()
+
+    labels = reproduce._stream_labels("Org/Foo", "test", "rev1")
+    assert labels == {"u1": 0, "u2": 1}
+
+
+def test_stream_labels_local_falls_back_to_shards_when_no_file(monkeypatch, tmp_path):
+    from speech_spoof_bench import local_registry as lr
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "eval.yaml").write_text("name: t\n")
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    lr.set("Org/Foo", d)
+
+    seen = {}
+    def fake_load_dataset(*args, **kwargs):
+        seen["args"] = args
+        return iter([{"label": 0, "notes": '{"utterance_id":"u1"}'}])
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+    reproduce._LABEL_CACHE.clear()
+
+    labels = reproduce._stream_labels("Org/Foo", "test", "rev2")
+    assert labels == {"u1": 0}
+    assert seen["args"][0] == "parquet"
+
+
+def test_stream_labels_remote_uses_labels_file(monkeypatch, tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    lf = tmp_path / "labels.parquet"
+    pq.write_table(
+        pa.table({"utterance_id": pa.array(["a", "b"], pa.string()),
+                  "label": pa.array([1, 0], pa.int8())}),
+        lf,
+    )
+    monkeypatch.setattr("speech_spoof_bench.reproduce._download_labels_file",
+                        lambda did, rev: lf)
+    def boom(*a, **k):
+        raise AssertionError("must not stream shards when labels file downloads")
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", boom)
+    reproduce._LABEL_CACHE.clear()
+
+    labels = reproduce._stream_labels("x/y", "test", "deadbeef")
+    assert labels == {"a": 1, "b": 0}
+
+
+def test_stream_labels_remote_falls_back_when_file_absent(monkeypatch):
+    monkeypatch.setattr("speech_spoof_bench.reproduce._download_labels_file",
+                        lambda did, rev: None)
+    def fake_load_dataset(*a, **k):
+        return iter([{"label": 1, "notes": '{"utterance_id":"z"}'}])
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+    reproduce._LABEL_CACHE.clear()
+
+    labels = reproduce._stream_labels("x/y", "test", "rev404")
+    assert labels == {"z": 1}
+
+
+def test_stream_labels_process_cache_hit(monkeypatch):
+    calls = {"n": 0}
+    def fake_load_dataset(*a, **k):
+        calls["n"] += 1
+        return iter([{"label": 0, "notes": '{"utterance_id":"c"}'}])
+    monkeypatch.setattr("speech_spoof_bench.reproduce._download_labels_file",
+                        lambda did, rev: None)
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+    reproduce._LABEL_CACHE.clear()
+
+    a = reproduce._stream_labels("x/y", "test", "revC")
+    b = reproduce._stream_labels("x/y", "test", "revC")
+    assert a == b == {"c": 0}
+    assert calls["n"] == 1  # second call served from the process cache
+
+
+def test_stream_labels_force_shards_bypasses_file_and_cache(monkeypatch, tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from speech_spoof_bench import local_registry as lr
+    d = tmp_path / "LA"
+    (d / "data").mkdir(parents=True)
+    (d / "eval.yaml").write_text("name: t\n")
+    (d / "data" / "test-00000-of-00001.parquet").write_bytes(b"")
+    pq.write_table(
+        pa.table({"utterance_id": pa.array(["u1"], pa.string()),
+                  "label": pa.array([0], pa.int8())}),
+        d / "data" / "labels.parquet",
+    )
+    monkeypatch.setattr(lr, "_registry_path", lambda: tmp_path / "reg.yaml")
+    lr.set("Org/Foo", d)
+
+    seen = {}
+    def fake_load_dataset(*args, **kwargs):
+        seen["args"] = args
+        return iter([{"label": 1, "notes": '{"utterance_id":"shard_only"}'}])
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", fake_load_dataset)
+    reproduce._LABEL_CACHE.clear()
+
+    labels = reproduce._stream_labels("Org/Foo", "test", "rev", force_shards=True)
+    assert labels == {"shard_only": 1}   # came from shards, not labels.parquet
+    assert seen["args"][0] == "parquet"

@@ -11,10 +11,13 @@ Workflow per §1.7 / spec §6 of phase-7a:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
 from datasets import load_dataset
+
+logger = logging.getLogger(__name__)
 
 from . import hf_fetch, submission
 from .metrics import get_metric
@@ -31,28 +34,33 @@ def _parse_scores_txt(path: Path) -> dict[str, float]:
     return out
 
 
-def _stream_labels(
-    dataset_id: str, split: str, revision: str, *, force_remote: bool = False,
-) -> dict[str, int]:
-    """Stream labels-only from the pinned dataset revision (or local copy).
+# Process-level memo of immutable labels, keyed by (dataset_id, revision).
+_LABEL_CACHE: dict[tuple[str, str], dict[str, int]] = {}
 
-    If `dataset_id` is in the local-dataset registry and `force_remote` is
-    False, reads the labels from local parquet shards. Otherwise streams
-    from HF at the pinned revision.
 
-    Passes ``columns=["notes", "label"]`` to ``load_dataset`` so the parquet
-    builder's ``ParquetConfig.columns`` is set. This propagates to
-    ``ParquetFileFormat.to_batches(columns=...)``, which IS a true PyArrow
-    column projection — only those column chunks are read from each row
-    group. Audio column bytes are not transferred.
+def _download_labels_file(dataset_id: str, revision: str):
+    """Download ``data/labels.parquet`` from the pinned dataset revision.
 
-    Critical: passing columns post-construction via ``ds.select_columns(...)``
-    is a CPU/memory projection only; the parquet read still pulls every
-    column's bytes. Only the load-time form achieves network-level pushdown.
+    Returns the local file path, or ``None`` if the file is absent (older
+    datasets) or any fetch error occurs — the caller then streams shards.
+    Never raises: the labels file is a pure optimization.
     """
-    from . import local_registry
+    try:
+        from huggingface_hub import hf_hub_download
+        local = hf_hub_download(
+            repo_id=dataset_id,
+            filename="data/labels.parquet",
+            repo_type="dataset",
+            revision=revision,
+        )
+        return Path(local)
+    except Exception as exc:
+        logger.debug("labels.parquet unavailable for %s@%s: %s", dataset_id, revision, exc)
+        return None
 
-    mapped = None if force_remote else local_registry.lookup(dataset_id)
+
+def _stream_labels_from_shards(dataset_id, split, revision, *, mapped):
+    """Original behavior: stream (notes, label) from local or remote shards."""
     if mapped is not None:
         import glob
         shards = sorted(glob.glob(str(mapped / "data" / "test-*.parquet")))
@@ -61,21 +69,14 @@ def _stream_labels(
                 f"{mapped}/data/test-*.parquet not found for {dataset_id}"
             )
         ds = load_dataset(
-            "parquet",
-            data_files={"train": shards},
-            split="train",
-            streaming=True,
-            columns=["notes", "label"],
+            "parquet", data_files={"train": shards}, split="train",
+            streaming=True, columns=["notes", "label"],
         )
     else:
         ds = load_dataset(
-            dataset_id,
-            split=split,
-            streaming=True,
-            revision=revision,
+            dataset_id, split=split, streaming=True, revision=revision,
             columns=["notes", "label"],
         )
-
     labels: dict[str, int] = {}
     for row in ds:
         note = json.loads(row["notes"])
@@ -83,11 +84,56 @@ def _stream_labels(
     return labels
 
 
+def _stream_labels(
+    dataset_id: str, split: str, revision: str, *,
+    force_remote: bool = False, force_shards: bool = False,
+) -> dict[str, int]:
+    """Return ``{utterance_id: int_label}`` for a pinned dataset revision.
+
+    Resolution order (shards stay authoritative; the labels file and cache are
+    pure optimizations and never cause a failure when absent):
+      1. process cache (unless ``force_shards``)
+      2. ``data/labels.parquet`` — local mapped copy, or one HF download
+      3. stream ``data/test-*.parquet`` shards (today's behavior)
+
+    ``force_remote`` ignores the local-dataset registry. ``force_shards``
+    bypasses the labels file and the cache to verify against shards directly.
+    Results are still cached so subsequent non-force calls benefit from the shard read.
+    """
+    from . import local_registry, labels as labels_mod
+
+    cache_key = (dataset_id, revision)
+    if not force_shards and cache_key in _LABEL_CACHE:
+        return _LABEL_CACHE[cache_key]
+
+    mapped = None if force_remote else local_registry.lookup(dataset_id)
+
+    result: dict[str, int] | None = None
+    if not force_shards:
+        if mapped is not None:
+            lf = mapped / "data" / labels_mod.LABELS_FILENAME
+            if lf.is_file():
+                result = labels_mod.load_labels_file(lf)
+        else:
+            lf = _download_labels_file(dataset_id, revision)
+            if lf is not None:
+                result = labels_mod.load_labels_file(lf)
+
+    if result is None:
+        result = _stream_labels_from_shards(
+            dataset_id, split, revision, mapped=mapped
+        )
+
+    _LABEL_CACHE[cache_key] = result
+    return result
+
+
 def run_scoring(
     yaml_path: Path | str,
     *,
     tolerance: float = 1e-6,
     force_remote: bool = False,
+    force_shards: bool = False,
     label_stream=None,
 ) -> int:
     """Run --scoring reproduction. Returns exit code (0 success, 1 fail).
@@ -96,7 +142,10 @@ def run_scoring(
     """
     if label_stream is None:
         def label_stream(did, split, rev):
-            return _stream_labels(did, split, rev, force_remote=force_remote)
+            return _stream_labels(
+                did, split, rev,
+                force_remote=force_remote, force_shards=force_shards,
+            )
     yaml_path = Path(yaml_path)
     try:
         data = submission.parse_submission(yaml_path.read_text())

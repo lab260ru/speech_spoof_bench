@@ -88,6 +88,22 @@ ds.to_parquet("data/test-00000-of-00001.parquet")
   builder's responsibility; drop sub-second clips yourself if your task requires it.
 - Shard files must match `data/test-*.parquet` — the loader globs exactly that.
 
+### `data/labels.parquet` (fast reproduction)
+
+Ship a tiny `data/labels.parquet` (`utterance_id: string`, `label: int8`)
+alongside the shards. Reproduction and nightly revalidation read this one file
+instead of streaming every shard (80 HTTP round-trips → 1 for ASVspoof2021_DF).
+
+`build_parquet.py` emits it automatically at the end of a full build. For a
+dataset already built and pushed, backfill it without re-encoding audio:
+
+    speech-spoof-bench emit-labels ./mydataset
+    # reads data/test-*.parquet (notes,label only) → writes data/labels.parquet
+
+The shards stay the source of truth: `emit-labels` asserts the file matches the
+shards before writing. `reproduce` falls back to streaming shards when the file
+is absent (older datasets), and `reproduce --force-shards` bypasses it.
+
 ## Step 4 — README front-matter & eval.yaml
 
 The README front-matter (HF card) **must** contain every D6 key and the `arena-ready` tag:

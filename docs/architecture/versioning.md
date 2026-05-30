@@ -159,4 +159,10 @@ dataset (`dataset.revision` SHA), the score file (`scores_url` commit + `scores_
 the metric code (`bench_version`), and the ranking rules (`ranking_version`). Change any
 of them and you've changed the number — which is exactly why each has its own version
 track and its own "when to bump" rule.
+
+## Package versions
+
+- `0.2.0` — adds the `data/labels.parquet` fast path, in-process label cache,
+  and nightly skip-unchanged. Additive (no schema change). Bumping the package
+  version invalidates the nightly green store, forcing a full re-verify.
 </content>

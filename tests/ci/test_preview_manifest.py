@@ -192,3 +192,59 @@ def test_preview_warns_when_dataset_has_no_submission_yamls(monkeypatch):
     assert result.warnings[0].dataset_id == "Org/A"
     assert result.warnings[0].path == "<submissions>"
     assert "no submission YAMLs" in result.warnings[0].reason
+
+
+def test_format_markdown_escapes_warning_table_and_links_run():
+    result = preview_manifest.PreviewResult(
+        dataset_count=1,
+        rows=0,
+        warnings=[
+            preview_manifest.PreviewWarning(
+                "Org/A|B",
+                "submissions/a.yaml",
+                "bad | reason\nnext line",
+            )
+        ],
+    )
+
+    md = preview_manifest.format_markdown(result, gh_run_url="https://gh/run")
+
+    assert "Org/A\\|B" in md
+    assert "bad \\| reason<br>next line" in md
+    assert "_[view CI run](https://gh/run)_" in md
+
+
+def test_run_passes_gh_run_url_from_env(monkeypatch, tmp_path, capsys):
+    manifest_path = tmp_path / "manifest.yaml"
+    manifest_path.write_text(
+        "schema_version: 1\n"
+        "ranking_version: test\n"
+        "metrics_in_use: [eer_percent]\n"
+        "tiers:\n"
+        "  - {name: gold, min_coverage: 1.0}\n"
+        "core_set:\n"
+        "  - {id: Org/A, revision: abc1234}\n"
+        "extended: []\n"
+    )
+    monkeypatch.setattr(
+        preview_manifest.hf_fetch,
+        "list_repo_files",
+        lambda dataset_id, repo_type, revision: ["eval.yaml"],
+    )
+    monkeypatch.setattr(
+        preview_manifest.submission,
+        "list_submission_files",
+        lambda dataset_id: ["submissions/a.yaml"],
+    )
+    monkeypatch.setattr(
+        preview_manifest.submission,
+        "fetch_submission",
+        lambda dataset_id, path: _submission(),
+    )
+    monkeypatch.setenv("GH_RUN_URL", "https://gh/run/123")
+
+    rc = preview_manifest.run(manifest_path=manifest_path)
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "https://gh/run/123" in out

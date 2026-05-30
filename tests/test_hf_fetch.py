@@ -203,3 +203,25 @@ def test_list_repo_files_uses_bounded_tree_api_and_paginates(monkeypatch):
         ("https://huggingface.co/api/datasets/Org/Ds/tree/refs%2Fpr%2F2?recursive=true", 5),
         ("https://huggingface.co/api/next-page", 5),
     ]
+
+
+def test_list_repo_files_does_not_retry_client_http_errors(monkeypatch):
+    calls = {"n": 0}
+
+    class Response:
+        status_code = 404
+        links = {}
+
+        def raise_for_status(self):
+            raise requests.HTTPError("not found", response=self)
+
+    def fake_get(url, *, headers, timeout):
+        calls["n"] += 1
+        return Response()
+
+    monkeypatch.setattr(hf_fetch.requests, "get", fake_get)
+
+    with pytest.raises(requests.HTTPError):
+        hf_fetch.list_repo_files("Org/Missing", repo_type="dataset", attempts=3, sleep=0)
+
+    assert calls["n"] == 1

@@ -59,6 +59,9 @@ def _retryable(exc: BaseException) -> bool:
     if isinstance(exc, HfHubHTTPError):
         status = getattr(getattr(exc, "response", None), "status_code", None)
         return status == 429 or (status is not None and status >= 500)
+    if isinstance(exc, requests.HTTPError):
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return status == 429 or (status is not None and status >= 500)
     return isinstance(exc, (requests.RequestException, TimeoutError, OSError))
 
 

@@ -287,3 +287,13 @@ def test_ci_preview_manifest_dispatches(monkeypatch, tmp_path):
 
     assert rc == 0
     assert captured["args"] == (local_manifest, None, None, None)
+
+
+def test_ci_preview_manifest_requires_manifest_or_repo_branch(capsys):
+    from speech_spoof_bench import cli
+
+    rc = cli.main(["ci", "preview-manifest", "--repo", "Org/manifest", "--pr", "7"])
+
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "provide --manifest or both --repo and --branch" in err

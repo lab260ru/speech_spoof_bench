@@ -121,7 +121,11 @@ def preview(candidate_manifest: dict, *, base_manifest: dict | None = None) -> P
     )
 
 
-def format_markdown(result: PreviewResult) -> str:
+def _md_cell(value: str) -> str:
+    return str(value).replace("|", "\\|").replace("\n", "<br>")
+
+
+def format_markdown(result: PreviewResult, *, gh_run_url: str | None = None) -> str:
     lines = [
         "**speech-spoof-bench ci arena-manifest preview**",
         "",
@@ -136,7 +140,12 @@ def format_markdown(result: PreviewResult) -> str:
     if result.warnings:
         lines.extend(["", "| Dataset | Path | Reason |", "|---|---|---|"])
         for warning in result.warnings:
-            lines.append(f"| {warning.dataset_id} | {warning.path} | {warning.reason} |")
+            lines.append(
+                f"| {_md_cell(warning.dataset_id)} | {_md_cell(warning.path)} "
+                f"| {_md_cell(warning.reason)} |"
+            )
+    if gh_run_url:
+        lines.extend(["", f"_[view CI run]({gh_run_url})_"])
     return "\n".join(lines)
 
 
@@ -187,10 +196,12 @@ def run(
     repo: str | None = None,
     pr: int | None = None,
     branch: str | None = None,
+    gh_run_url: str | None = None,
 ) -> int:
     candidate = _load_candidate(manifest_path=manifest_path, repo=repo, branch=branch)
     result = preview(candidate, base_manifest=_load_base(repo))
-    body = format_markdown(result)
+    gh_run_url = gh_run_url or os.environ.get("GH_RUN_URL")
+    body = format_markdown(result, gh_run_url=gh_run_url)
     if repo and pr is not None:
         _post_comment(repo, pr, body)
     else:

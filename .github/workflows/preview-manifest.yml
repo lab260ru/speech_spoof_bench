@@ -30,6 +30,7 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_BOT_TOKEN: ${{ secrets.HF_BOT_TOKEN }}
+          GH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           speech-spoof-bench ci preview-manifest \
             --repo "${{ inputs.repo }}" \

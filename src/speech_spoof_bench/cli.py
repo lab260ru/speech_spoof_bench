@@ -180,6 +180,12 @@ def _cmd_ci_post_merge_badge(args: argparse.Namespace) -> int:
 
 def _cmd_ci_preview_manifest(args: argparse.Namespace) -> int:
     from .ci import preview_manifest
+    if args.manifest is None and (args.repo is None or args.branch is None):
+        print(
+            "error: provide --manifest or both --repo and --branch",
+            file=sys.stderr,
+        )
+        return 2
     pr = int(args.pr) if args.pr is not None else None
     return preview_manifest.run(
         manifest_path=args.manifest,

@@ -36,8 +36,12 @@ def parse_hf_resolve_url(url: str) -> tuple[str, str, str]:
     return m["repo"], m["sha"], m["path"]
 
 
+def _env_token() -> str | None:
+    return os.environ.get("HF_TOKEN") or os.environ.get("HF_BOT_TOKEN") or None
+
+
 def _auth_headers(token: str | None = None) -> dict[str, str]:
-    token = token if token is not None else (os.environ.get("HF_TOKEN") or None)
+    token = token if token is not None else _env_token()
     return {"authorization": f"Bearer {token}"} if token else {}
 
 
@@ -154,7 +158,7 @@ def download(url: str) -> tuple[Path, str]:
     Returns (local_path, sha256_hex). Honors $HF_TOKEN if set.
     """
     repo, sha, path = parse_hf_resolve_url(url)
-    token = os.environ.get("HF_TOKEN") or None
+    token = _env_token()
     p = hub_download(
         repo_id=repo,
         filename=path,

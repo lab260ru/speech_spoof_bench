@@ -71,6 +71,23 @@ def test_download_without_token(tmp_path, monkeypatch):
     assert captured["token"] is None
 
 
+def test_download_uses_hf_bot_token_when_hf_token_absent(tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("HF_BOT_TOKEN", "bot_xyz")
+    fake_file = tmp_path / "scores.txt"
+    fake_file.write_text("x")
+    captured = {}
+
+    def fake_download(**kwargs):
+        captured.update(kwargs)
+        return str(fake_file)
+
+    with patch.object(hf_fetch, "hf_hub_download", side_effect=fake_download):
+        hf_fetch.download(VALID_URL)
+
+    assert captured["token"] == "bot_xyz"
+
+
 def test_hub_download_retries_transient_failure_and_sets_etag_timeout(tmp_path):
     fake_file = tmp_path / "file.txt"
     fake_file.write_text("ok")

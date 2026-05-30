@@ -14,6 +14,7 @@ from typing import Any
 import yaml
 from datasets import ClassLabel
 from huggingface_hub import hf_hub_download
+from tqdm.auto import tqdm
 
 from . import hf_fetch
 from . import submission as sub_mod
@@ -204,8 +205,21 @@ def _check_dataset_side(
     sampled_for_d4 = 0
     # IterableDataset is single-pass: the `ds` above was exhausted by
     # next(iter(ds)) for D1/D3. Re-resolve to get a fresh iterator.
+    #
+    # D4/D5 is the only multi-minute step (it streams every row to check notes
+    # JSON and uniqueness), so wrap it in a tqdm bar for liveness feedback.
+    # disable=None auto-silences when stderr isn't a TTY (CI logs, pipes), so it
+    # never pollutes captured test output. No total: the source is a streaming
+    # IterableDataset with no length, so the bar shows count + rate only.
     try:
-        for row in resolve(spec, streaming=True)[1]:
+        scan = tqdm(
+            resolve(spec, streaming=True)[1],
+            desc="D4/D5 scan",
+            unit="row",
+            unit_scale=True,
+            disable=None,
+        )
+        for row in scan:
             raw_notes = row.get("notes")
             note: dict | None = None
             try:

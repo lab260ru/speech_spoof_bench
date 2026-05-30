@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "speech-spoof-bench"
-version = "0.1.0"
+version = "0.1.1"
 description = "Benchmark harness for speech anti-spoofing models."
 requires-python = ">=3.10"
 readme = "README.md"
@@ -17,6 +17,7 @@ dependencies = [
     "pyyaml>=6.0",
     "jsonschema>=4.0",
     "scipy>=1.10",
+    "tqdm>=4.66",
 ]
 
 [project.optional-dependencies]

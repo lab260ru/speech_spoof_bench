@@ -18,7 +18,7 @@ def _commit(cid):
     return c
 
 
-def test_diffs_against_parent_not_main():
+def test_diffs_against_parent_not_main(monkeypatch):
     """File present at both sha and main, absent at parent → detected as added."""
     api = MagicMock()
     sha, parent = "mergesha01", "parentsha0"
@@ -29,7 +29,7 @@ def test_diffs_against_parent_not_main():
         # sha and current-main (revision=None) both already have the new file
         return ["submissions/new.yaml", "submissions/README.md"]
 
-    api.list_repo_files.side_effect = files
+    monkeypatch.setattr(post_merge_badge.hf_fetch, "list_repo_files", files)
     api.list_repo_commits.return_value = [_commit(sha), _commit(parent)]
 
     assert post_merge_badge._changed_submissions(api, "Org/Foo", sha) == [
@@ -37,7 +37,7 @@ def test_diffs_against_parent_not_main():
     ]
 
 
-def test_no_addition_when_file_already_at_parent():
+def test_no_addition_when_file_already_at_parent(monkeypatch):
     """File present at parent too → not 'added' by this merge."""
     api = MagicMock()
     sha, parent = "mergesha01", "parentsha0"
@@ -45,20 +45,24 @@ def test_no_addition_when_file_already_at_parent():
     def files(repo_id, revision=None, repo_type=None):
         return ["submissions/existing.yaml", "submissions/README.md"]
 
-    api.list_repo_files.side_effect = files
+    monkeypatch.setattr(post_merge_badge.hf_fetch, "list_repo_files", files)
     api.list_repo_commits.return_value = [_commit(sha), _commit(parent)]
 
     assert post_merge_badge._changed_submissions(api, "Org/Foo", sha) == []
 
 
-def test_first_commit_no_parent_treats_all_as_added():
+def test_first_commit_no_parent_treats_all_as_added(monkeypatch):
     """When sha is the repo's first commit, every candidate counts as added."""
     api = MagicMock()
     sha = "firstcommit"
 
-    api.list_repo_files.side_effect = lambda repo_id, revision=None, repo_type=None: [
-        "submissions/a.yaml", "submissions/README.md"
-    ]
+    monkeypatch.setattr(
+        post_merge_badge.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: [
+            "submissions/a.yaml", "submissions/README.md"
+        ],
+    )
     api.list_repo_commits.return_value = [_commit(sha)]  # no parent
 
     assert post_merge_badge._changed_submissions(api, "Org/Foo", sha) == [

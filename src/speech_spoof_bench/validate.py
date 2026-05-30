@@ -14,10 +14,10 @@ from typing import Any
 
 import yaml
 from datasets import Audio, ClassLabel, Features, Value
-from huggingface_hub import hf_hub_download
 from tqdm.auto import tqdm
 
 from . import hf_fetch
+from .hf_fetch import hub_download as hf_hub_download
 from . import submission as sub_mod
 from .loader import DatasetSource, _parse_eval_yaml, resolve
 

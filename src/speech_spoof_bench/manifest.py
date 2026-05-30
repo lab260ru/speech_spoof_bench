@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from huggingface_hub import hf_hub_download
 from jsonschema import validate
+
+from .hf_fetch import hub_download as hf_hub_download
 
 MANIFEST_REPO = "SpeechAntiSpoofingBenchmarks/arena-manifest"
 MANIFEST_FILENAME = "manifest.yaml"

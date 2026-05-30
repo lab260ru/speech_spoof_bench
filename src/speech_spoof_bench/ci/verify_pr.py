@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from huggingface_hub import HfApi, hf_hub_download
+from huggingface_hub import HfApi
 
-from .. import reproduce, submission
+from .. import hf_fetch, reproduce, submission
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,9 @@ class Verdict:
 
 
 def _download_at_revision(repo_id: str, filename: str, revision: str, repo_type: str) -> str:
-    return hf_hub_download(repo_id=repo_id, filename=filename,
-                           revision=revision, repo_type=repo_type)
+    return str(hf_fetch.hub_download(
+        repo_id=repo_id, filename=filename, revision=revision, repo_type=repo_type
+    ))
 
 
 def _run_scoring_repro(data: dict) -> tuple[bool, str]:
@@ -49,8 +50,9 @@ def _run_scoring_repro(data: dict) -> tuple[bool, str]:
 
 
 def _changed_submissions(api: HfApi, repo: str, branch: str) -> list[str]:
-    main_files = set(api.list_repo_files(repo_id=repo, repo_type="dataset"))
-    branch_files = set(api.list_repo_files(repo_id=repo, revision=branch, repo_type="dataset"))
+    del api  # kept for compatibility with tests/callers
+    main_files = set(hf_fetch.list_repo_files(repo, repo_type="dataset"))
+    branch_files = set(hf_fetch.list_repo_files(repo, revision=branch, repo_type="dataset"))
     candidates = {
         f for f in branch_files
         if f.startswith("submissions/") and f.endswith(".yaml")

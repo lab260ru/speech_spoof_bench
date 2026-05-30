@@ -42,7 +42,8 @@ _SHARD_RE = re.compile(r"^data/test-\d{5}-of-\d{5}\.parquet$")
 
 
 def _shard_paths(api, dataset_id: str, revision: str) -> list[str]:
-    files = api.list_repo_files(
+    del api  # get_paths_info still needs HfApi; file listing is bounded here.
+    files = hf_fetch.list_repo_files(
         dataset_id,
         repo_type="dataset",
         revision=revision,
@@ -88,14 +89,14 @@ def _download_main_labels_if_shards_match(dataset_id: str, revision: str):
     if revision == "main":
         return None
     try:
-        from huggingface_hub import HfApi, hf_hub_download
+        from huggingface_hub import HfApi
 
         api = HfApi()
         pinned = _shard_fingerprints(api, dataset_id, revision)
         current = _shard_fingerprints(api, dataset_id, "main")
         if pinned is None or pinned != current:
             return None
-        local = hf_hub_download(
+        local = hf_fetch.hub_download(
             repo_id=dataset_id,
             filename="data/labels.parquet",
             repo_type="dataset",
@@ -118,8 +119,7 @@ def _download_labels_file(dataset_id: str, revision: str):
     Never raises: the labels file is a pure optimization.
     """
     try:
-        from huggingface_hub import hf_hub_download
-        local = hf_hub_download(
+        local = hf_fetch.hub_download(
             repo_id=dataset_id,
             filename="data/labels.parquet",
             repo_type="dataset",

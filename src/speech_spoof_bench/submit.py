@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from huggingface_hub import CommitOperationAdd, HfApi, hf_hub_download
+from huggingface_hub import CommitOperationAdd, HfApi
 from jsonschema import ValidationError, validate
+
+from . import hf_fetch
 
 _META_SCHEMA_PACKAGE = "speech_spoof_bench.data"
 _META_SCHEMA_FILENAME = "submission_meta.schema.json"
@@ -175,7 +177,7 @@ def _resolve_dataset_slug(
     """Resolve `spec` to (canonical_id, slug, revision, split).
 
     Slug is the last path segment (matches DatasetSource.slug for HF specs).
-    Revision is the current main-branch sha from HfApi.repo_info — we want the
+    Revision is the current main-branch sha from the Hub API — we want the
     state the run scored against, even though `loader.resolve` returns None for
     HF specs today.
     """
@@ -186,23 +188,30 @@ def _resolve_dataset_slug(
             from . import local_registry
             if local_registry.lookup(spec) is not None:
                 source, _ = _resolve(spec, streaming=True, force_remote=False)
-                info = api.repo_info(repo_id=source.canonical_id, repo_type="dataset")
-                return source.canonical_id, source.slug, info.sha, source.split
+                return (
+                    source.canonical_id,
+                    source.slug,
+                    hf_fetch.repo_sha(source.canonical_id, repo_type="dataset"),
+                    source.split,
+                )
 
         eval_path = Path(
-            hf_hub_download(
+            hf_fetch.hub_download(
                 repo_id=spec,
                 filename="eval.yaml",
                 repo_type="dataset",
             )
         )
         meta = _parse_eval_yaml(eval_path)
-        info = api.repo_info(repo_id=spec, repo_type="dataset")
-        return spec, spec.split("/")[-1], info.sha, meta["split"]
+        return spec, spec.split("/")[-1], hf_fetch.repo_sha(spec, repo_type="dataset"), meta["split"]
 
     source, _ = _resolve(spec, streaming=True, force_remote=force_remote)
-    info = api.repo_info(repo_id=source.canonical_id, repo_type="dataset")
-    return source.canonical_id, source.slug, info.sha, source.split
+    return (
+        source.canonical_id,
+        source.slug,
+        hf_fetch.repo_sha(source.canonical_id, repo_type="dataset"),
+        source.split,
+    )
 
 
 def _run_benchmark(

@@ -22,6 +22,13 @@ def test_existing_sentinel_skips_post(monkeypatch, tmp_path):
         parent_files=["submissions/README.md"],
         events=[prior],
     )
+    monkeypatch.setattr(
+        post_merge_badge.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: api.list_repo_files(
+            repo_id, revision=revision, repo_type=repo_type
+        ),
+    )
 
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")

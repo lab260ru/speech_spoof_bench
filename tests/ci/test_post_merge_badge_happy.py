@@ -56,6 +56,13 @@ def test_one_new_submission_posts_one_comment(monkeypatch, tmp_path):
         sha_files=["submissions/aasist.yaml", "submissions/README.md"],
         parent_files=["submissions/README.md"],
     )
+    monkeypatch.setattr(
+        post_merge_badge.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: api.list_repo_files(
+            repo_id, revision=revision, repo_type=repo_type
+        ),
+    )
 
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")
@@ -90,6 +97,13 @@ def test_post_merge_comment_includes_tier_and_rank_badges(monkeypatch, tmp_path)
         parent="parent0000",
         sha_files=["submissions/aasist.yaml", "submissions/README.md"],
         parent_files=["submissions/README.md"],
+    )
+    monkeypatch.setattr(
+        post_merge_badge.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: api.list_repo_files(
+            repo_id, revision=revision, repo_type=repo_type
+        ),
     )
 
     def fake_dl(repo_id, filename, revision, repo_type):

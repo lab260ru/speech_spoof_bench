@@ -211,12 +211,8 @@ def test_resolve_dataset_slug_hf_uses_eval_yaml_without_loading_dataset(
     )
     fake_hf_api.repo_info.return_value.sha = "abcdef1234"
 
-    monkeypatch.setattr(
-        submit_mod,
-        "hf_hub_download",
-        lambda **kw: str(eval_yaml),
-        raising=False,
-    )
+    monkeypatch.setattr(submit_mod.hf_fetch, "hub_download", lambda **kw: eval_yaml)
+    monkeypatch.setattr(submit_mod.hf_fetch, "repo_sha", lambda *a, **kw: "abcdef1234")
 
     def boom(*args, **kwargs):
         raise AssertionError("submit metadata resolution must not load the dataset")
@@ -237,13 +233,13 @@ def test_resolve_dataset_slug_existing_local_path_uses_loader(
     fake_hf_api.repo_info.return_value.sha = "localsha"
 
     monkeypatch.setattr(
-        submit_mod,
-        "hf_hub_download",
+        submit_mod.hf_fetch,
+        "hub_download",
         lambda **kw: (_ for _ in ()).throw(
             AssertionError("existing local dataset paths must not hit the Hub")
         ),
-        raising=False,
     )
+    monkeypatch.setattr(submit_mod.hf_fetch, "repo_sha", lambda *a, **kw: "localsha")
 
     source = SimpleNamespace(
         canonical_id="Local/Tiny",

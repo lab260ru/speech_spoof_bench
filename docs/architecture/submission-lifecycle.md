@@ -203,4 +203,20 @@ only (other files copied verbatim; `__pycache__`/`__init__.py` skipped). It refu
 write into a non-empty dir unless `force=True`. The template ships **inside the wheel**
 (read via `importlib.resources`), so editing the skeleton requires reinstalling the
 package. → [developing/new-dataset.md](../developing/new-dataset.md)
+
+---
+
+### Label fetch fast path
+
+**Label fetch fast path.** `reproduce --scoring` resolves labels in this order:
+in-process cache → `data/labels.parquet` (one request) → `data/test-*.parquet`
+shard stream (fallback). Labels at a pinned `dataset.revision` are immutable, so
+they are memoized per `(dataset_id, revision)` for the life of the process.
+
+**Nightly skip-unchanged.** `nightly-revalidate` skips a submission entirely when
+`(scores_sha256, dataset.revision, installed bench_version)` is unchanged since
+the last green run (state cached via GitHub Actions). A package release bumps
+`bench_version` and re-verifies everything; a weekly `--full` sweep and the
+`--full` flag force a complete pass. Trade-off: artifact drift at `scores_url`
+on an otherwise-unchanged submission is only detected on the next full sweep.
 </content>

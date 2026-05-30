@@ -173,5 +173,42 @@ speech-spoof-bench submit --model-module rawnet2:RawNet2 \
 speech-spoof-bench reproduce ./results/ASVspoof2019_LA/submission.yaml --scoring --no-local
 ```
 
+## Submitting manually (when `submit` would re-stream)
+
+`speech-spoof-bench submit` re-runs the model through the runner. If you already
+have a `scores.txt` (e.g. from a prior `run`), or the dataset is registered in
+your local registry and `submit` resolves its `org/name` in a way that 404s on
+`repo_info` or falls back to **re-streaming the full audio from the Hub**, skip
+`submit` and do the two uploads by hand. This is the path each dataset's
+`submissions/README.md` documents:
+
+1. Upload your existing `scores.txt` to your model repo (commit-pinned):
+   ```bash
+   hf upload <owner>/<model-repo> \
+     results/<DATASET>/scores.txt \
+     .eval_results/SpeechAntiSpoofingBenchmarks/<DATASET>/scores.txt \
+     --repo-type model
+   # note the commit sha, or read it back:
+   python -c "from huggingface_hub import HfApi; print(HfApi().model_info('<owner>/<model-repo>').sha)"
+   ```
+2. Copy `submissions/results_template.yaml` to `submissions/<slug>.yaml` and fill
+   in `dataset.revision` (the dataset's pinned commit sha), `scores`
+   (`eer_percent`, `n_trials`, `n_skipped`), `artifact.scores_url` (the
+   **commit-pinned** `…/resolve/<model-sha>/…` URL), `artifact.scores_sha256`
+   (`sha256sum scores.txt`), and `artifact.bench_version`. Leave `reproduction:`
+   empty — the maintainer fills it at merge.
+3. Open the PR:
+   ```bash
+   hf upload SpeechAntiSpoofingBenchmarks/<DATASET> \
+     <slug>.yaml submissions/<slug>.yaml \
+     --repo-type dataset --create-pr
+   ```
+
+> **Gotcha.** If the dataset is in your local registry
+> (`speech-spoof-bench local list`), passing its `org/name` to `submit` can
+> resolve to the bare basename and 404 on `repo_info`, or bypass the local copy
+> with `--no-local` and re-stream the audio. The manual path above sidesteps
+> both and reuses scores you've already computed.
+
 See [testing-and-pitfalls.md](testing-and-pitfalls.md) for the full failure catalogue.
 </content>

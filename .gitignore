@@ -19,3 +19,6 @@ results/
 .ruff_cache/
 local-datasets.yaml
 .superpowers/
+
+# CI nightly-revalidate runtime state (not source)
+.nightly-green.json

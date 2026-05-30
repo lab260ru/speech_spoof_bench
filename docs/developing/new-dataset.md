@@ -130,14 +130,14 @@ the Arena ranks and badges by:
 name: MyDataset
 description: "..."
 evaluation_framework: inspect-ai
-task:
-  id: antispoofing_eval
-  config: default
-  split: test
-  field_spec: {input: audio, target: label}
-  solvers: [{name: speech_spoof_bench_solver}]
-  scorers: [{name: speech_spoof_scorer}]
-  metrics: [eer_percent]       # every id here MUST be registered in the package (D7)
+tasks:                          # MUST be a list named `tasks` (the loader reads tasks[0])
+  - id: antispoofing_eval
+    config: default
+    split: test
+    field_spec: {input: audio, target: label}
+    solvers: [{name: speech_spoof_bench_solver}]
+    scorers: [{name: speech_spoof_scorer}]
+    metrics: [eer_percent]     # every id here MUST be registered in the package (D7)
 ```
 
 If you list a metric the installed package doesn't know, D7 fails. Adding a metric is a

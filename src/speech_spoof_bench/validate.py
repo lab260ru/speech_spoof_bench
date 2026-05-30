@@ -212,8 +212,15 @@ def _check_dataset_side(
     # never pollutes captured test output. No total: the source is a streaming
     # IterableDataset with no length, so the bar shows count + rate only.
     try:
+        # D4/D5 only need `notes` + `path`. Push the column projection down to
+        # load time (real pushdown) so the Audio column is neither transferred
+        # (HF) nor decoded (local) — minutes -> seconds on a 181k/611k dataset.
+        # NOTE: a post-load select_columns() would skip the decode but still
+        # transfer the audio bytes over the network (see testing-and-pitfalls
+        # "Column projection myth"), so the projection must happen in resolve().
+        scan_ds = resolve(spec, streaming=True, columns=["notes", "path"])[1]
         scan = tqdm(
-            resolve(spec, streaming=True)[1],
+            scan_ds,
             desc="D4/D5 scan",
             unit="row",
             unit_scale=True,

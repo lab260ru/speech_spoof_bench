@@ -71,7 +71,35 @@ Space needs.
 - **Column projection myth.** In `reproduce`/ingest, labels are loaded with
   `load_dataset(..., columns=[...])` for *real* network pushdown. A post-load
   `select_columns()` still transfers the audio bytes — slow, not wrong, but it'll look like
-  reproduce is "hanging" on big datasets.
+  reproduce is "hanging" on big datasets. (Applies to `validate-dataset`'s D4/D5 scan too:
+  dropping the audio via `select_columns` skips the *decode* — a big win when reading local
+  parquet — but the online scan still transfers audio unless the columns are pushed down at
+  `load_dataset` time.)
+
+### Submitting (`submit`)
+
+- **`submit` + a locally-registered dataset passed by `org/name` 404s.** When the dataset
+  is in the local registry (`speech-spoof-bench local list`), `submit` resolves it to the
+  local source whose `canonical_id` is the **bare directory basename** (e.g.
+  `ASVspoof2021_LA`, org prefix dropped), then calls `repo_info("ASVspoof2021_LA")` →
+  `RepositoryNotFoundError`. *Catch / workaround:* run `submit --no-local`, or use the
+  manual upload path in [new-model.md](new-model.md#submitting-manually-when-submit-would-re-stream).
+- **`submit --no-local` re-scores from scratch and re-streams the audio.** It does not
+  reuse an existing `results/<DATASET>/scores.txt`, so it re-downloads the full dataset and
+  re-runs the model (pure waste for a baseline that ignores audio). Worse, if you cancel it
+  mid-run it can leave a **truncated** `scores.txt` (e.g. 68k of 181k lines) whose sha no
+  longer matches `result.yaml`. *Catch:* prefer the manual upload path when you already have
+  scores; if you do cancel a `submit`, regenerate `scores.txt` cleanly before reusing it.
+
+### Local dev environment
+
+- **`local-datasets.yaml` in the repo root breaks `pytest`.** `local_registry._REGISTRY_PATH`
+  is `Path("local-datasets.yaml")` — **relative to the CWD**. Run `speech-spoof-bench local
+  set …` from the package repo and you create that file in the repo root; a conftest guard
+  then trips (`patched read_text used without writing first`) because a test resolved a
+  dataset and read the real registry. CI is green because a clean checkout has no such file.
+  *Catch:* the file is not gitignored — keep it out of the package repo root (run `local set`
+  from elsewhere, or move the file aside before `pytest`), or gitignore it.
 
 ### Schemas & versioning
 

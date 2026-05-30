@@ -99,6 +99,11 @@ def test_hf_dispatch_invokes_load_dataset(monkeypatch, tmp_path):
 
     monkeypatch.setattr(L, "load_dataset", fake_load_dataset)
     monkeypatch.setattr(L, "hf_hub_download", fake_hf_hub_download)
+    # Isolate from any local-datasets.yaml in the dev environment: this test
+    # asserts the HF dispatch path, so the registry must not redirect to a local
+    # copy (see testing-and-pitfalls "local-datasets.yaml in the repo root").
+    from speech_spoof_bench import local_registry as _lr
+    monkeypatch.setattr(_lr, "lookup", lambda _spec: None)
 
     source, ds = resolve("SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA", streaming=True)
     assert source.is_local is False
@@ -144,7 +149,7 @@ def test_resolve_force_remote_bypasses_registry(monkeypatch, tmp_path):
 
     monkeypatch.setattr(lr, "lookup", lambda did: tmp_path)  # should be ignored
     called = {}
-    def fake_hf(repo, streaming):
+    def fake_hf(repo, streaming, columns=None):
         called["repo"] = repo
         # return a dummy source so the caller can finish
         return loader.DatasetSource(

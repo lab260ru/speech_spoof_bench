@@ -21,6 +21,11 @@ from __future__ import annotations
 
 
 def main() -> None:
+    # After writing data/test-*.parquet, ship the fast-path labels file:
+    #     from speech_spoof_bench import labels
+    #     labels.emit_labels(Path(__file__).resolve().parent)
+    # This lets reproduce/nightly fetch one small file instead of streaming
+    # every shard. See docs/developing/new-dataset.md.
     raise NotImplementedError("Implement parquet build for this dataset.")
 
 

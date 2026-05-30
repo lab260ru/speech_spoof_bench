@@ -115,6 +115,23 @@ def test_hub_download_retries_transient_failure_and_sets_etag_timeout(tmp_path):
     assert calls[1]["etag_timeout"] == 3
 
 
+def test_hub_download_uses_env_token_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.setenv("HF_BOT_TOKEN", "bot_xyz")
+    fake_file = tmp_path / "file.txt"
+    fake_file.write_text("ok")
+    captured = {}
+
+    def fake_download(**kwargs):
+        captured.update(kwargs)
+        return str(fake_file)
+
+    with patch.object(hf_fetch, "hf_hub_download", side_effect=fake_download):
+        hf_fetch.hub_download(repo_id="Org/Ds", filename="eval.yaml", repo_type="dataset")
+
+    assert captured["token"] == "bot_xyz"
+
+
 def test_repo_sha_uses_bounded_request(monkeypatch):
     captured = {}
 

@@ -86,6 +86,7 @@ def hub_download(
 ) -> Path:
     """Bounded/retried wrapper around `hf_hub_download`."""
     kwargs.setdefault("etag_timeout", timeout)
+    kwargs.setdefault("token", _env_token())
     return Path(
         _with_retries(
             lambda: hf_hub_download(**kwargs),

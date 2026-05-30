@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from speech_spoof_bench.ci import nightly
 
 
@@ -98,7 +96,7 @@ def test_manage_issues_comments_when_reason_changes():
     api.list_issues.return_value = [{"number": 3, "title": "[Org/Foo] rb", "last_comment_body": "OLD"}]
     nightly.manage_issues(failures=[_failure(reason="NEW")], api=api)
     api.create_issue.assert_not_called()
-    api.add_comment.assert_called_once_with(3, body=pytest.approx_any(), reason="NEW") if False else api.add_comment.assert_called_once()
+    api.add_comment.assert_called_once()
 
 
 def test_manage_issues_closes_resolved_issue():

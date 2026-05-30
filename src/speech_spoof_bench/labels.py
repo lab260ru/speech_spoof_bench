@@ -3,8 +3,9 @@
 ``emit_labels`` reads the canonical shards' ``notes`` + ``label`` columns only
 (no audio) and writes ``data/labels.parquet`` with two typed columns:
 ``utterance_id`` (string) and ``label`` (int8, 0=bonafide 1=spoof). The shards
-remain the source of truth, so emit derives the map from them, asserts the
-written file matches, and refuses to leave an inconsistent file behind.
+remain the source of truth, so emit derives the map from them and, as a
+write-integrity guard, re-reads the file to confirm it round-trips before
+returning (removing it on mismatch).
 
 ``load_labels_file`` reads the file back to ``{utterance_id: int}`` for
 ``reproduce._stream_labels`` — one columnar read instead of an 80-shard stream.
@@ -39,7 +40,10 @@ def emit_labels(dataset_dir: Path | str) -> Path:
         notes = t.column("notes").to_pylist()
         labs = t.column("label").to_pylist()
         for note, lab in zip(notes, labs):
-            uid = json.loads(note)["utterance_id"]
+            try:
+                uid = json.loads(note)["utterance_id"]
+            except (json.JSONDecodeError, KeyError) as exc:
+                raise ValueError(f"malformed notes in {shard!r}: {exc}") from exc
             if uid in seen:
                 raise ValueError(f"duplicate utterance_id in shards: {uid!r}")
             seen.add(uid)
@@ -55,8 +59,11 @@ def emit_labels(dataset_dir: Path | str) -> Path:
         str(out_path),
     )
 
-    # Consistency assert: the written file must reproduce the shard-derived map.
-    if load_labels_file(out_path) != dict(zip(uids, label_vals)):
+    # Write-integrity guard: re-read the file and confirm it round-trips to the
+    # shard-derived map (catches a truncated/corrupt write). The shards remain
+    # the source of truth; uids/label_vals were derived from them above.
+    on_disk = load_labels_file(out_path)
+    if len(on_disk) != len(uids) or on_disk != dict(zip(uids, label_vals)):
         out_path.unlink(missing_ok=True)
         raise AssertionError("labels.parquet does not match shards after write")
     return out_path

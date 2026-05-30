@@ -1,0 +1,37 @@
+name: preview-arena-manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "HF dataset repo containing manifest.yaml"
+        required: true
+        default: "SpeechAntiSpoofingBenchmarks/arena-manifest"
+      pr:
+        description: "HF PR/discussion number to comment on"
+        required: true
+      branch:
+        description: "HF ref to preview, e.g. refs/pr/42"
+        required: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Preview manifest
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_BOT_TOKEN: ${{ secrets.HF_BOT_TOKEN }}
+        run: |
+          speech-spoof-bench ci preview-manifest \
+            --repo "${{ inputs.repo }}" \
+            --pr "${{ inputs.pr }}" \
+            --branch "${{ inputs.branch }}"

@@ -178,6 +178,17 @@ def _cmd_ci_post_merge_badge(args: argparse.Namespace) -> int:
     return post_merge_badge.run(repo=args.repo, pr=int(args.pr), sha=args.sha)
 
 
+def _cmd_ci_preview_manifest(args: argparse.Namespace) -> int:
+    from .ci import preview_manifest
+    pr = int(args.pr) if args.pr is not None else None
+    return preview_manifest.run(
+        manifest_path=args.manifest,
+        repo=args.repo,
+        pr=pr,
+        branch=args.branch,
+    )
+
+
 def _cmd_submit(args: argparse.Namespace) -> int:
     from . import submit as submit_mod
 
@@ -355,6 +366,20 @@ def build_parser() -> argparse.ArgumentParser:
     pmb.add_argument("--pr", required=True, help="HF PR (discussion) number")
     pmb.add_argument("--sha", required=True, help="merge commit sha on the dataset main branch")
     pmb.set_defaults(func=_cmd_ci_post_merge_badge)
+
+    pm = ci_sub.add_parser(
+        "preview-manifest",
+        help="preview Arena rows/warnings for an arena-manifest candidate",
+    )
+    pm.add_argument(
+        "--manifest",
+        type=Path,
+        help="local manifest.yaml candidate; omit when using --repo/--branch",
+    )
+    pm.add_argument("--repo", help="arena-manifest dataset repo id (org/name)")
+    pm.add_argument("--pr", help="HF PR (discussion) number to comment on")
+    pm.add_argument("--branch", help="ref to fetch manifest.yaml from, e.g. refs/pr/42")
+    pm.set_defaults(func=_cmd_ci_preview_manifest)
 
     return p
 

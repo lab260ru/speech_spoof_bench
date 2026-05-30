@@ -11,10 +11,13 @@ Workflow per §1.7 / spec §6 of phase-7a:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 
 from datasets import load_dataset
+
+logger = logging.getLogger(__name__)
 
 from . import hf_fetch, submission
 from .metrics import get_metric
@@ -42,7 +45,6 @@ def _download_labels_file(dataset_id: str, revision: str):
     datasets) or any fetch error occurs — the caller then streams shards.
     Never raises: the labels file is a pure optimization.
     """
-    from pathlib import Path as _Path
     try:
         from huggingface_hub import hf_hub_download
         local = hf_hub_download(
@@ -51,8 +53,9 @@ def _download_labels_file(dataset_id: str, revision: str):
             repo_type="dataset",
             revision=revision,
         )
-        return _Path(local)
-    except Exception:
+        return Path(local)
+    except Exception as exc:
+        logger.debug("labels.parquet unavailable for %s@%s: %s", dataset_id, revision, exc)
         return None
 
 
@@ -95,6 +98,7 @@ def _stream_labels(
 
     ``force_remote`` ignores the local-dataset registry. ``force_shards``
     bypasses the labels file and the cache to verify against shards directly.
+    Results are still cached so subsequent non-force calls benefit from the shard read.
     """
     from . import local_registry, labels as labels_mod
 

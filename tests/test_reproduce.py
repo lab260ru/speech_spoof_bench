@@ -186,7 +186,7 @@ def test_unknown_metric(tmp_path):
 
 
 def test_stream_labels_uses_local_registry(monkeypatch, tmp_path):
-    """When dataset_id is mapped locally, _stream_labels reads from local parquet."""
+    """Falls back to local parquet shards when no labels.parquet is present."""
     import pyarrow as pa
     import pyarrow.parquet as pq
     from speech_spoof_bench import local_registry as lr

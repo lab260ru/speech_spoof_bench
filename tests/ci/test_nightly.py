@@ -80,6 +80,8 @@ def test_collect_failures_full_ignores_store(monkeypatch, tmp_path):
 
     nightly.collect_failures(full=True)
     assert len(called) == 1  # --full re-verifies despite the green entry
+    saved = green_store.load(store_path)
+    assert green_store.is_green(saved, "Org/Foo", "a", "sha1", "rev1") is True
 
 
 def test_manage_issues_opens_new_issue_for_new_failure():

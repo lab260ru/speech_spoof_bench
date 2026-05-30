@@ -40,12 +40,19 @@ def _list_submission_files(dataset_id: str, **kw) -> list[str]:
 
 def _check_submission_data(dataset_id: str, data: dict) -> Failure | None:
     """Run reproduce --scoring on an already-fetched submission dict."""
+    import os
     import tempfile
     import yaml as _yaml
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as fh:
         _yaml.safe_dump(data, fh)
         local = fh.name
-    rc = reproduce.run_scoring(local, tolerance=1e-6)
+    try:
+        rc = reproduce.run_scoring(local, tolerance=1e-6)
+    finally:
+        try:
+            os.unlink(local)
+        except OSError:
+            pass
     if rc != 0:
         return Failure(dataset_id, data["system"]["slug"],
                        "reproduce --scoring failed (see job log)")
@@ -53,6 +60,7 @@ def _check_submission_data(dataset_id: str, data: dict) -> Failure | None:
 
 
 def _check_submission(dataset_id: str, path: str) -> Failure | None:
+    # Retained as a path-based convenience wrapper (collect_failures inlines this flow).
     try:
         data = fetch_submission(dataset_id, path)
     except submission.SubmissionValidationError as e:

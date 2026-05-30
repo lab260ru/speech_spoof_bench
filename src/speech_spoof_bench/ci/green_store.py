@@ -21,6 +21,7 @@ def submission_id(dataset_id: str, slug: str) -> str:
 
 
 def _entry_key(scores_sha256: str, revision: str) -> str:
+    # sha256 is hex and normal git/HF revisions contain no '|', so '|' is a safe delimiter.
     return f"{scores_sha256}|{revision}|{_BENCH_VERSION}"
 
 
@@ -28,11 +29,14 @@ def load(path: Path | str = DEFAULT_STORE_PATH) -> dict[str, str]:
     p = Path(path)
     if not p.is_file():
         return {}
-    return json.loads(p.read_text())
+    try:
+        return json.loads(p.read_text())
+    except json.JSONDecodeError:
+        return {}  # corrupt cache → treat as empty; a re-verify repopulates it
 
 
 def save(store: dict[str, str], path: Path | str = DEFAULT_STORE_PATH) -> None:
-    Path(path).write_text(json.dumps(store, indent=2, sort_keys=True))
+    Path(path).write_text(json.dumps(store, indent=2, sort_keys=True) + "\n")
 
 
 def is_green(store: dict[str, str], dataset_id: str, slug: str,

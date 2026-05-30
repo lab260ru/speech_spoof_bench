@@ -34,3 +34,9 @@ def test_bench_version_change_invalidates(monkeypatch):
     # Simulate a new installed package version.
     monkeypatch.setattr(green_store, "_BENCH_VERSION", "9.9.9")
     assert green_store.is_green(store, "Org/Foo", "rb", "sha1", "rev1") is False
+
+
+def test_load_corrupt_file_returns_empty(tmp_path):
+    path = tmp_path / "green.json"
+    path.write_text("{not valid json")
+    assert green_store.load(path) == {}

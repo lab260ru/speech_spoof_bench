@@ -169,3 +169,26 @@ def test_preview_warns_when_manifest_revision_is_not_fetchable(monkeypatch):
     assert result.warnings[0].dataset_id == "Org/A"
     assert result.warnings[0].path == "<revision:abc1234>"
     assert "revision missing" in result.warnings[0].reason
+
+
+def test_preview_warns_when_dataset_has_no_submission_yamls(monkeypatch):
+    candidate = _manifest("Org/A")
+
+    monkeypatch.setattr(
+        preview_manifest.hf_fetch,
+        "list_repo_files",
+        lambda dataset_id, repo_type, revision: ["eval.yaml"],
+    )
+    monkeypatch.setattr(
+        preview_manifest.submission,
+        "list_submission_files",
+        lambda dataset_id: [],
+    )
+
+    result = preview_manifest.preview(candidate)
+
+    assert result.rows == 0
+    assert len(result.warnings) == 1
+    assert result.warnings[0].dataset_id == "Org/A"
+    assert result.warnings[0].path == "<submissions>"
+    assert "no submission YAMLs" in result.warnings[0].reason

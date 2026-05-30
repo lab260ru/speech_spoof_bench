@@ -58,6 +58,7 @@ def preview(candidate_manifest: dict, *, base_manifest: dict | None = None) -> P
     for entry in entries:
         dataset_id = entry["id"]
         revision = entry["revision"]
+        revision_failed = False
         try:
             files_at_revision = hf_fetch.list_repo_files(
                 dataset_id,
@@ -73,12 +74,22 @@ def preview(candidate_manifest: dict, *, base_manifest: dict | None = None) -> P
                     )
                 )
         except Exception as exc:  # noqa: BLE001
+            revision_failed = True
             warnings.append(PreviewWarning(dataset_id, f"<revision:{revision}>", str(exc)))
 
         try:
             paths = submission.list_submission_files(dataset_id)
         except Exception as exc:  # noqa: BLE001
             warnings.append(PreviewWarning(dataset_id, "<list>", str(exc)))
+            continue
+        if not paths and not revision_failed:
+            warnings.append(
+                PreviewWarning(
+                    dataset_id,
+                    "<submissions>",
+                    "no submission YAMLs found; Arena will have no display rows",
+                )
+            )
             continue
         for path in paths:
             try:

@@ -318,6 +318,59 @@ def test_stream_labels_remote_uses_labels_file(monkeypatch, tmp_path):
     assert labels == {"a": 1, "b": 0}
 
 
+def test_stream_labels_remote_uses_main_labels_when_pinned_shards_match(
+    monkeypatch, tmp_path
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    lf = tmp_path / "labels.parquet"
+    pq.write_table(
+        pa.table({"utterance_id": pa.array(["legacy"], pa.string()),
+                  "label": pa.array([1], pa.int8())}),
+        lf,
+    )
+
+    def fake_hf_hub_download(*, repo_id, filename, repo_type, revision):
+        assert repo_id == "x/y"
+        assert repo_type == "dataset"
+        assert filename == "data/labels.parquet"
+        if revision == "legacyrev":
+            raise FileNotFoundError("labels.parquet not present at pinned rev")
+        assert revision == "main"
+        return lf
+
+    class FakeInfo:
+        def __init__(self, path, sha, size=123):
+            self.path = path
+            self.size = size
+            self.blob_id = sha
+            self.lfs = None
+
+    class FakeApi:
+        def list_repo_files(self, repo_id, repo_type, revision):
+            assert repo_id == "x/y"
+            assert repo_type == "dataset"
+            return ["data/test-00000-of-00001.parquet"]
+
+        def get_paths_info(self, repo_id, paths, repo_type, revision):
+            assert repo_id == "x/y"
+            assert repo_type == "dataset"
+            assert paths == ["data/test-00000-of-00001.parquet"]
+            return [FakeInfo(paths[0], "same-shard-sha")]
+
+    def boom(*a, **k):
+        raise AssertionError("load_dataset must not stream shards when main labels match")
+
+    monkeypatch.setattr("huggingface_hub.hf_hub_download", fake_hf_hub_download)
+    monkeypatch.setattr("huggingface_hub.HfApi", FakeApi)
+    monkeypatch.setattr("speech_spoof_bench.reproduce.load_dataset", boom)
+    reproduce._LABEL_CACHE.clear()
+
+    labels = reproduce._stream_labels("x/y", "test", "legacyrev")
+    assert labels == {"legacy": 1}
+
+
 def test_stream_labels_remote_falls_back_when_file_absent(monkeypatch):
     monkeypatch.setattr("speech_spoof_bench.reproduce._download_labels_file",
                         lambda did, rev: None)

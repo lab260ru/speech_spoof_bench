@@ -43,6 +43,11 @@ def test_preview_counts_rows_warnings_and_dataset_delta(monkeypatch):
         "fetch_submission",
         lambda dataset_id, path: _submission(slug=dataset_id.split("/")[-1]),
     )
+    monkeypatch.setattr(
+        preview_manifest.hf_fetch,
+        "list_repo_files",
+        lambda dataset_id, repo_type, revision: ["eval.yaml"],
+    )
 
     result = preview_manifest.preview(candidate, base_manifest=base)
 
@@ -66,6 +71,11 @@ def test_preview_warns_and_skips_submission_without_reproduction(monkeypatch):
         preview_manifest.submission,
         "fetch_submission",
         lambda dataset_id, path: _submission(reproduced=False),
+    )
+    monkeypatch.setattr(
+        preview_manifest.hf_fetch,
+        "list_repo_files",
+        lambda dataset_id, repo_type, revision: ["eval.yaml"],
     )
 
     result = preview_manifest.preview(candidate)
@@ -116,6 +126,11 @@ def test_run_downloads_manifest_branch_and_posts_comment(monkeypatch, tmp_path, 
         "fetch_submission",
         lambda dataset_id, path: _submission(slug=dataset_id.split("/")[-1]),
     )
+    monkeypatch.setattr(
+        preview_manifest.hf_fetch,
+        "list_repo_files",
+        lambda dataset_id, repo_type, revision: ["eval.yaml"],
+    )
     monkeypatch.delenv("HF_BOT_TOKEN", raising=False)
 
     rc = preview_manifest.run(
@@ -129,3 +144,28 @@ def test_run_downloads_manifest_branch_and_posts_comment(monkeypatch, tmp_path, 
     assert "arena-manifest preview" in out
     assert "Rows: 2" in out
     assert "Org/B" in out
+
+
+def test_preview_warns_when_manifest_revision_is_not_fetchable(monkeypatch):
+    candidate = _manifest("Org/A")
+
+    monkeypatch.setattr(
+        preview_manifest.hf_fetch,
+        "list_repo_files",
+        lambda dataset_id, repo_type, revision: (_ for _ in ()).throw(
+            RuntimeError("revision missing")
+        ),
+    )
+    monkeypatch.setattr(
+        preview_manifest.submission,
+        "list_submission_files",
+        lambda dataset_id: [],
+    )
+
+    result = preview_manifest.preview(candidate)
+
+    assert result.rows == 0
+    assert len(result.warnings) == 1
+    assert result.warnings[0].dataset_id == "Org/A"
+    assert result.warnings[0].path == "<revision:abc1234>"
+    assert "revision missing" in result.warnings[0].reason

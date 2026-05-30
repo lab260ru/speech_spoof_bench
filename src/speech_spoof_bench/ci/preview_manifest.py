@@ -38,6 +38,10 @@ def _dataset_ids(data: dict) -> list[str]:
     return [entry["id"] for entry in data.get("core_set", []) + data.get("extended", [])]
 
 
+def _dataset_entries(data: dict) -> list[dict]:
+    return list(data.get("core_set", []) + data.get("extended", []))
+
+
 def preview(candidate_manifest: dict, *, base_manifest: dict | None = None) -> PreviewResult:
     """Build an Arena-like manifest preview summary.
 
@@ -45,12 +49,32 @@ def preview(candidate_manifest: dict, *, base_manifest: dict | None = None) -> P
     reproduction block are counted as displayable rows; invalid or unverified
     submissions become warnings.
     """
-    dataset_ids = _dataset_ids(candidate_manifest)
+    entries = _dataset_entries(candidate_manifest)
+    dataset_ids = [entry["id"] for entry in entries]
     base_ids = _dataset_ids(base_manifest) if base_manifest is not None else []
     rows = 0
     warnings: list[PreviewWarning] = []
 
-    for dataset_id in dataset_ids:
+    for entry in entries:
+        dataset_id = entry["id"]
+        revision = entry["revision"]
+        try:
+            files_at_revision = hf_fetch.list_repo_files(
+                dataset_id,
+                repo_type="dataset",
+                revision=revision,
+            )
+            if "eval.yaml" not in files_at_revision:
+                warnings.append(
+                    PreviewWarning(
+                        dataset_id,
+                        f"<revision:{revision}>",
+                        "eval.yaml missing at manifest-pinned revision",
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(PreviewWarning(dataset_id, f"<revision:{revision}>", str(exc)))
+
         try:
             paths = submission.list_submission_files(dataset_id)
         except Exception as exc:  # noqa: BLE001

@@ -170,7 +170,7 @@ def _cmd_ci_verify_pr(args: argparse.Namespace) -> int:
 
 def _cmd_ci_nightly(args: argparse.Namespace) -> int:
     from .ci import nightly
-    return nightly.run(open_issues=args.open_issues)
+    return nightly.run(open_issues=args.open_issues, full=args.full)
 
 
 def _cmd_ci_post_merge_badge(args: argparse.Namespace) -> int:
@@ -343,6 +343,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="walk all merged submissions, open/close stale-submission issues")
     nr.add_argument("--open-issues", action="store_true",
         help="open/comment/close GitHub issues for failures (requires gh + GH_TOKEN)")
+    nr.add_argument("--full", action="store_true",
+        help="re-verify every submission, ignoring the green store")
     nr.set_defaults(func=_cmd_ci_nightly)
 
     pmb = ci_sub.add_parser(

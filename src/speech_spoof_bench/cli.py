@@ -84,6 +84,7 @@ def _cmd_reproduce(args: argparse.Namespace) -> int:
     from . import reproduce
     return reproduce.run_scoring(
         args.path, tolerance=args.tolerance, force_remote=args.no_local,
+        force_shards=args.force_shards,
     )
 
 
@@ -113,6 +114,13 @@ def _cmd_scaffold_dataset(args: argparse.Namespace) -> int:
         name=args.name, output_dir=args.output_dir, force=args.force,
     )
     print(f"scaffolded dataset skeleton at {args.output_dir}")
+    return 0
+
+
+def _cmd_emit_labels(args: argparse.Namespace) -> int:
+    from . import labels
+    out = labels.emit_labels(args.dataset_dir)
+    print(f"wrote {out}")
     return 0
 
 
@@ -265,6 +273,14 @@ def build_parser() -> argparse.ArgumentParser:
                     help="overwrite if output-dir is non-empty")
     sd.set_defaults(func=_cmd_scaffold_dataset)
 
+    el = sub.add_parser(
+        "emit-labels",
+        help="derive data/labels.parquet from a dataset's shards (no audio)",
+    )
+    el.add_argument("dataset_dir", type=Path,
+                    help="local dataset repo dir containing data/test-*.parquet")
+    el.set_defaults(func=_cmd_emit_labels)
+
     rp = sub.add_parser(
         "reproduce",
         help="reproduce a submission's scores (--scoring) or "
@@ -282,6 +298,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-local",
         action="store_true",
         help="ignore the local-dataset registry; always stream from HF",
+    )
+    rp.add_argument(
+        "--force-shards",
+        action="store_true",
+        help="bypass data/labels.parquet; verify against shards directly",
     )
     rp.set_defaults(func=_cmd_reproduce)
 

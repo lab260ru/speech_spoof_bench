@@ -122,17 +122,71 @@ Manifest-pinned revisions (used for `dataset.revision` in each submission YAML):
 | CD-ADD | `c2de87d49b268b624e6af7440dc2890703098965` |
 | InTheWild | `a957f2582802cdb5964e118818c2e46b3d61aa35` |
 
-Steps per dataset:
-1. Run inference (uses the local registry copy; `PYTHONPATH=benchmarks/Res2TCNGuard`, `CUDA_VISIBLE_DEVICES=3`, `batch_size` from §0). Default: `speech-spoof-bench run --model-module res2tcnguard:Res2TCNGuard --datasets SpeechAntiSpoofingBenchmarks/<DATASET> --output-dir ./results` → `scores.txt` + `result.yaml`. If §0 selected the faithful custom runner, use it (validated score-identical) for speed.
+Steps per dataset (REVISED 2026-05-31 — reproduce-before-merge, see Addendum):
+1. Run inference (uses the local registry copy; `PYTHONPATH=benchmarks/Res2TCNGuard`, `CUDA_VISIBLE_DEVICES=3`, `batch_size=4`): `speech-spoof-bench run --model-module res2tcnguard:Res2TCNGuard --datasets SpeechAntiSpoofingBenchmarks/<DATASET> --output-dir ./results` → `scores.txt` + `result.yaml`. (Canonical runner; Task 5 was dropped — GPU is the ~70 utt/s bottleneck.)
 2. **Sanity gate (2019_LA only):** EER near 1.49% confirms wrapper + score direction. ~98% ⇒ direction flipped → fix before continuing. Out-of-domain datasets (the other four) are expected to show high EER — not a bug.
-3. Upload `scores.txt` to the model repo (commit-pinned); capture SHA.
-4. Author `submissions/Res2TCNGuard.yaml` from `results_template.yaml`: `dataset.revision` = manifest-pinned revision, `scores` (eer/n_trials/n_skipped), `artifact.scores_url` (pinned), `scores_sha256` (`sha256sum`), `bench_version`. `reproduction:` left empty.
-5. `validate-submission` (offline schema check). **No `reproduce` CI mirror.**
-6. Open PR: `hf upload SpeechAntiSpoofingBenchmarks/<DATASET> Res2TCNGuard.yaml submissions/Res2TCNGuard.yaml --repo-type dataset --create-pr`.
-7. Hand PR link to user → user merges + checks the Arena → confirms → proceed to next dataset.
+3. Upload `scores.txt` to the model repo (commit-pinned); capture SHA + `sha256sum`.
+4. Author `submissions/<slug>.yaml` (slug = `res2tcnguard`, lowercase per schema) from `results_template.yaml`: `dataset.revision` = manifest-pinned revision, `scores` (eer/n_trials/n_skipped), `artifact.scores_url` (pinned), `scores_sha256`, `bench_version`.
+5. **Reproduce as maintainer (BEFORE the PR):** `speech-spoof-bench reproduce <submission>.yaml --scoring --no-local` — re-downloads the score file, checks sha256, streams labels at the pinned revision, recomputes EER vs claimed (Δ must be ~0). On success, **fill the `reproduction:` block** in the YAML (`reproduced_by: SpeechAntiSpoofingBenchmarks`, `reproduced_at`, `reproduced_bench_version`, `match: scoring`).
+6. `validate-submission` (offline schema check).
+7. Open PR with the **filled** reproduction block: `hf upload SpeechAntiSpoofingBenchmarks/<DATASET> <slug>.yaml submissions/<slug>.yaml --repo-type dataset --create-pr`.
+8. Hand PR link to user → user merges → system appears on the Arena automatically (webhook → re-ingest). Confirm, then proceed to next dataset.
 
 ## Risks tracked
 
-- **InTheWild not in local registry** → `speech-spoof-bench local add` before its run (other 4 are registered).
-- **Local-copy vs pinned-revision drift** → CI mirror is skipped per user; if a merged submission's utt-id set differs from the pinned revision, CI's `verify-pr` (on the PR) or nightly revalidate will surface it. Accepted risk for now.
-- **Score direction** → caught by the 2019_LA sanity gate on dataset #1.
+- **InTheWild not in local registry** → `speech-spoof-bench local set` before its run (other 4 are registered).
+- **Score direction** → caught by the 2019_LA sanity gate on dataset #1 (passed: EER 1.4956%).
+
+## Addendum (2026-05-31): the `reproduction:` gate + how the Arena auto-updates
+
+**What we learned the hard way.** Dataset #1's PR was merged with `reproduction: {}` empty.
+The model then never showed on the Arena even after a forced Space restart. Root cause is
+in `arena/ingest.py:_build_state()`:
+
+```python
+repro = sub.get("reproduction") or {}
+if not repro.get("match"):
+    warnings.append(Warning(..., reason="missing reproduction block — unverified, skipped"))
+    continue                      # the submission is filtered OUT of the leaderboard
+```
+
+The Arena deliberately hides any submission whose `reproduction.match` is unset. It is a
+**trust gate**, not a refresh-timing issue — no amount of refreshing surfaces an unverified
+submission. Fix applied: a maintainer runs `reproduce --scoring` and fills the block; once
+present, the submission appears on the next refresh.
+
+**Does the Arena auto-update for a new model the way it does for a new dataset? Yes — it
+already does, via the same webhook.** `arena/webhook.py` handles a dataset-repo `main`
+update (PR merge) by scheduling `_refresh_and_commit(repo)`, which calls
+`ingest.load_state(force_refresh=True)` and commits the new `cache.json`. So a merged
+submission re-ingests automatically within a refresh cycle — identical to the
+dataset-update path. The ONLY reason a new model doesn't "just appear" is the
+`reproduction:` filter above. So the question reduces to: *who fills `reproduction`, and
+when?*
+
+Three ways to close that gap, in increasing automation:
+
+1. **Status quo / current flow — maintainer fills before merge (CHOSEN).** Whoever uploads
+   the scores acts as the reproducing maintainer: run `reproduce --scoring`, fill the block,
+   open the PR already-verified. Merge → appears automatically. Keeps the human trust gate
+   (a person ran the check and merged), zero new infrastructure. This is what we adopted for
+   datasets 2–5.
+
+2. **Auto-stamp in the post-merge workflow.** The `post-merge-badge` GitHub Action already
+   runs on merge and the `verify-hf-pr` Action already ran `reproduce --scoring` on the PR.
+   Extend post-merge to *write the `reproduction:` block back* to the merged YAML
+   (`reproduced_by: <ci-bot>`, `reproduced_at: <date>`, `reproduced_bench_version`,
+   `match: scoring`) and commit to `main`. The existing webhook then re-ingests and the model
+   appears with no human edit — the closest to "datasets just appear." Trade-off: removes the
+   human reproduction gate (acceptable because `reproduce --scoring` is deterministic and CI
+   already gates the PR; the merge click remains the human checkpoint). Cost: a small change
+   to `ci/post_merge_badge.py` + a commit-back token scope, plus care to avoid a
+   webhook→commit→webhook loop (guard: skip if `reproduction.match` already set).
+
+3. **Show unverified submissions, ranked separately.** Relax `ingest.py` to include
+   submissions without `reproduction`, flagged "unverified" and excluded from ranked tiers.
+   Weakest option — pollutes the board with unchecked numbers; not recommended.
+
+**Recommendation:** keep option 1 for this effort; if the project later wants new models to
+appear hands-off, implement option 2 (auto-stamp in post-merge) with the loop guard. No
+Arena ranking-code change is needed for either.

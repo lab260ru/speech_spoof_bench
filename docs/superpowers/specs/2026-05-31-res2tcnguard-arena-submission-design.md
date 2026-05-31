@@ -12,7 +12,9 @@ Arena datasets (one at a time), and open a submission PR per dataset.
 | HF model repo | `SpeechAntiSpoofingBenchmarks/Res2TCNGuard` (org-owned) |
 | Paper representation | **Path A** — DOI `10.48084/etasr.8906` in the `arxiv_id` field (accepts cosmetic "arXiv:" mislabel in the Arena detail view) |
 | Windowing | Deterministic first 64600 samples (tile-pad if shorter) |
-| Inference | Batched `score_batch`, `batch_size=32` |
+| Inference | Batched `score_batch`; **`batch_size` chosen by a pre-inference sweep** (§0) |
+| Worker tuning | Prototype a parallel-decode DataLoader (`num_workers` ≤ 16); if much faster, use a faithful custom runner (§0) |
+| Wrapper + checkpoint location | `benchmarks/Res2TCNGuard/` (i.e. on the dataset drive) |
 | Scope / order | All 5 core datasets, **ASVspoof2019_LA first** (in-domain sanity check) |
 | CI mirror (`reproduce --no-local`) | **Skipped** — submit as-is, observe behavior |
 | Datasets source | Local copies under `benchmarks/` (registered local datasets) |
@@ -27,7 +29,39 @@ Arena datasets (one at a time), and open a submission PR per dataset.
 - Checkpoint `best_1.495.pth` (818 KB), reported best EER **1.49%** on ASVspoof2019 LA eval. `params_millions` measured at load.
 - Sample rate 16 kHz (`SincConv_fast(sample_rate=16000)`); the runner resamples inputs to `expected_sample_rate=16000`.
 
+## Component 0 — Pre-inference performance sweep (once, before any dataset)
+
+Goal: pick the fastest `batch_size` and decide whether a parallel-decode custom
+runner is worth using. Run on GPU 3.
+
+1. **Batch-size sweep (GPU throughput).** Load the model once; time `score_batch`
+   over dummy `float32[64600]` tensors at batch sizes `[1,2,4,8,16,32,64]`
+   (warm-up + median of N reps). Pick the batch size with the best utts/sec; set it
+   as the `Res2TCNGuard.batch_size` class attribute.
+2. **Worker sweep (decode throughput).** On a real slice of one local dataset
+   (~1–2k rows), time a `torch.utils.data.DataLoader` that decodes + runs
+   `_extract`/`_to_float32_mono_16k` (imported from the package — identical
+   preprocessing) at `num_workers ∈ [0,2,4,8,16]` (**cap 16**). Record utts/sec.
+3. **Decision.** Compare end-to-end throughput: official single-threaded runner vs
+   a parallel-decode prototype at the best `num_workers`.
+   - If the parallel path is **not materially faster**, use the official
+     `speech-spoof-bench run` for all datasets (scores are canonical by definition).
+   - If it **is** materially faster, build a small **faithful custom runner** that
+     reuses the package's `_extract`/`_to_float32_mono_16k` and the model's
+     `score_batch`, parallelizing only decode via the DataLoader. **Gate:** before
+     using it for real, validate it produces the **same per-utterance scores** (by
+     utt_id, within 1e-6) as the official runner on a subset; only then use it for
+     full runs. EER is computed by the package from the resulting `scores.txt`
+     either way.
+
+Record the chosen `batch_size`, `num_workers`, and the runner decision in
+`implementation-notes.md`.
+
 ## Component 1 — Wrapper `res2tcnguard.py`
+
+Lives at `benchmarks/Res2TCNGuard/res2tcnguard.py` alongside the checkpoint
+`benchmarks/Res2TCNGuard/best_1.495.pth`. Runs are launched with that dir on
+`PYTHONPATH` (`--model-module res2tcnguard:Res2TCNGuard`).
 
 Self-contained file holding the network classes copied verbatim from the notebook
 (`SincConv_fast`, `Res2Block`, `SE_Block`, `Encoder`, `Chomp1d`, `TemporalBlock`,
@@ -37,7 +71,7 @@ Self-contained file holding the network classes copied verbatim from the noteboo
 class Res2TCNGuard(AntiSpoofingModel):
     name = "Res2TCNGuard"
     expected_sample_rate = 16000
-    batch_size = 32
+    batch_size = <chosen by §0 sweep>
 
     def load(self):
         self.net = TestModel().eval()
@@ -89,7 +123,7 @@ Manifest-pinned revisions (used for `dataset.revision` in each submission YAML):
 | InTheWild | `a957f2582802cdb5964e118818c2e46b3d61aa35` |
 
 Steps per dataset:
-1. `CUDA_VISIBLE_DEVICES=3 speech-spoof-bench run --model-module res2tcnguard:Res2TCNGuard --datasets SpeechAntiSpoofingBenchmarks/<DATASET> --output-dir ./results` → `scores.txt` + `result.yaml` (uses the local registry copy).
+1. Run inference (uses the local registry copy; `PYTHONPATH=benchmarks/Res2TCNGuard`, `CUDA_VISIBLE_DEVICES=3`, `batch_size` from §0). Default: `speech-spoof-bench run --model-module res2tcnguard:Res2TCNGuard --datasets SpeechAntiSpoofingBenchmarks/<DATASET> --output-dir ./results` → `scores.txt` + `result.yaml`. If §0 selected the faithful custom runner, use it (validated score-identical) for speed.
 2. **Sanity gate (2019_LA only):** EER near 1.49% confirms wrapper + score direction. ~98% ⇒ direction flipped → fix before continuing. Out-of-domain datasets (the other four) are expected to show high EER — not a bug.
 3. Upload `scores.txt` to the model repo (commit-pinned); capture SHA.
 4. Author `submissions/Res2TCNGuard.yaml` from `results_template.yaml`: `dataset.revision` = manifest-pinned revision, `scores` (eer/n_trials/n_skipped), `artifact.scores_url` (pinned), `scores_sha256` (`sha256sum`), `bench_version`. `reproduction:` left empty.

@@ -53,6 +53,23 @@ class MyModel(SimpleAntiSpoofingModel):
 3. **Don't resample.** You're handed float32 mono at `expected_sample_rate`. Resampling
    again double-processes the audio and shifts your numbers.
 
+### Device handling & picking a GPU
+
+The runner doesn't choose a device for you — your `load()` does. Two traps:
+
+- **Legacy nets that hard-code device placement.** Some checkpoints ship a network that
+  decides device internally (e.g. a `gpu_id` constructor arg with `.cuda(gpu_id)` calls,
+  or tensors allocated with no `device=`). If you `.to("cuda")` the module but the
+  internal code still builds helper tensors on CPU, you get
+  `Expected all tensors to be on the same device`. Wire the device through from `load()`
+  (pass the right `gpu_id`/ordinal), or make the smallest device-agnostic patch
+  (`torch.zeros(..., device=x.device)`); don't rewrite the math.
+- **`CUDA_VISIBLE_DEVICES` ≠ `nvidia-smi` index.** PyTorch defaults to *fastest-first*
+  ordering, so `CUDA_VISIBLE_DEVICES=3` may not be the card you saw as `3` in
+  `nvidia-smi`. Pin both: `CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=<n>`, then
+  assert `torch.cuda.get_device_name(0)` is the card you expect before a long run. With a
+  single visible device, your model's ordinal is `0`.
+
 ### Batched inference (optional)
 
 ```python
@@ -78,14 +95,20 @@ so a batch-only bug can hide as a silent slowdown. Test with a real batch size.
 Register the dataset locally (see [setup.md](setup.md)), then:
 
 ```bash
-speech-spoof-bench run \
+PYTHONPATH=. speech-spoof-bench run \
   --model-module my_model:MyModel \
   --datasets SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA \
   --output-dir ./results
 ```
 
-`--model-module` is `import.path:ClassName`. The file must be importable (on `PYTHONPATH`
-or in CWD). Outputs:
+`--model-module` is `import.path:ClassName`. The file must be importable. **Set
+`PYTHONPATH=.` (or to your model dir) — don't rely on "it's in my CWD".**
+`speech-spoof-bench` is a console-script entry point, and Python puts the *script's*
+directory on `sys.path[0]`, **not** your current working directory. So a bare
+`speech-spoof-bench run --model-module my_model:MyModel` from the folder containing
+`my_model.py` fails with `ModuleNotFoundError: No module named 'my_model'`. The
+explicit `PYTHONPATH=.` is what makes the import (and any sibling imports like
+`from _net import ...`) resolve. Outputs:
 
 - `results/<slug>/scores.txt` — `utt_id score` per line.
 - `results/<slug>/result.yaml` — the metrics, `n_trials`, `n_skipped`, and `bench_version`.

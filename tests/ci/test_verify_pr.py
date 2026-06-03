@@ -1,11 +1,17 @@
 """Tests for speech_spoof_bench.ci.verify_pr."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 from speech_spoof_bench.ci import verify_pr
+
+
+def _tree(*paths):
+    """Mimic HfApi.list_repo_tree output: objects carrying a ``.path``."""
+    return [SimpleNamespace(path=p) for p in paths]
 
 
 def _good_yaml(slug="good-system"):
@@ -36,11 +42,11 @@ def test_verdict_table_columns():
 def test_run_with_one_good_and_one_bad(monkeypatch, tmp_path):
     """End-to-end: fetched PR contains two YAMLs, one passes, one fails."""
     api = MagicMock()
-    api.list_repo_files.side_effect = [
+    api.list_repo_tree.side_effect = [
         # main:
-        ["submissions/a.yaml", "submissions/README.md", "submissions/results_template.yaml"],
+        _tree("submissions/a.yaml", "submissions/README.md", "submissions/results_template.yaml"),
         # branch:
-        ["submissions/a.yaml", "submissions/b.yaml", "submissions/README.md"],
+        _tree("submissions/a.yaml", "submissions/b.yaml", "submissions/README.md"),
     ]
     # b.yaml is added on the branch; a.yaml is identical to main (skipped).
     def fake_dl(repo_id, filename, revision, repo_type):
@@ -64,13 +70,17 @@ def test_run_with_one_good_and_one_bad(monkeypatch, tmp_path):
     assert rc == 1
     assert "submissions/b.yaml" in posted["body"]
     assert "EER mismatch" in posted["body"]
+    # The repo listing must be scoped to submissions/, never a full repo tree.
+    for _, kwargs in api.list_repo_tree.call_args_list:
+        assert kwargs.get("path_in_repo") == "submissions"
+    api.list_repo_files.assert_not_called()
 
 
 def test_run_with_only_passing_submission_exits_zero(monkeypatch, tmp_path):
     api = MagicMock()
-    api.list_repo_files.side_effect = [
-        ["submissions/README.md"],
-        ["submissions/a.yaml", "submissions/README.md"],
+    api.list_repo_tree.side_effect = [
+        _tree("submissions/README.md"),
+        _tree("submissions/a.yaml", "submissions/README.md"),
     ]
     def fake_dl(repo_id, filename, revision, repo_type):
         p = tmp_path / filename.replace("/", "_")
@@ -84,7 +94,7 @@ def test_run_with_only_passing_submission_exits_zero(monkeypatch, tmp_path):
 
 def test_run_with_zero_changed_submissions_exits_zero(monkeypatch):
     api = MagicMock()
-    api.list_repo_files.return_value = ["submissions/README.md"]
+    api.list_repo_tree.return_value = _tree("submissions/README.md")
     posted = []
     monkeypatch.setattr(verify_pr, "_post_comment", lambda r, p, b: posted.append(b))
     rc = verify_pr.run(repo="Org/Foo", pr=2, branch="refs/pr/2", api=api, gh_run_url="x")

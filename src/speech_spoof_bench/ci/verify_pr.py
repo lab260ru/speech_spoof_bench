@@ -49,9 +49,34 @@ def _run_scoring_repro(data: dict) -> tuple[bool, str]:
     return (rc == 0, "ok" if rc == 0 else "reproduce --scoring exited non-zero (see job log)")
 
 
+def _list_submission_paths(api: HfApi, repo: str, revision: str | None) -> set[str]:
+    """Paths under ``submissions/`` at a revision.
+
+    Scoped to the ``submissions/`` subtree via ``list_repo_tree`` instead of a
+    full recursive ``list_repo_files`` of the whole dataset repo. On a dataset
+    repo the full tree includes every parquet data shard, so listing it
+    paginates many pages and is a prime 429 trigger — we only ever need the
+    handful of files under ``submissions/``. Returns an empty set if the folder
+    doesn't exist yet (e.g. a brand-new dataset).
+    """
+    from huggingface_hub.errors import EntryNotFoundError
+
+    def _fetch():
+        return list(api.list_repo_tree(
+            repo_id=repo, path_in_repo="submissions", recursive=True,
+            revision=revision, repo_type="dataset",
+        ))
+
+    try:
+        entries = retry_on_429(_fetch)
+    except EntryNotFoundError:
+        return set()
+    return {getattr(e, "path", e) for e in entries}
+
+
 def _changed_submissions(api: HfApi, repo: str, branch: str) -> list[str]:
-    main_files = set(retry_on_429(api.list_repo_files, repo_id=repo, repo_type="dataset"))
-    branch_files = set(retry_on_429(api.list_repo_files, repo_id=repo, revision=branch, repo_type="dataset"))
+    main_files = _list_submission_paths(api, repo, None)
+    branch_files = _list_submission_paths(api, repo, branch)
     candidates = {
         f for f in branch_files
         if f.startswith("submissions/") and f.endswith(".yaml")

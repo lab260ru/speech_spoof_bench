@@ -18,6 +18,13 @@ def test_no_submission_changes_returns_zero_no_comment(monkeypatch):
         sha_files=["submissions/README.md"],
         parent_files=["submissions/README.md"],
     )
+    monkeypatch.setattr(
+        post_merge_badge.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: api.list_repo_files(
+            repo_id, revision=revision, repo_type=repo_type
+        ),
+    )
     posted = []
     monkeypatch.setattr(post_merge_badge, "_post_comment",
                         lambda r, p, b: posted.append(b))
@@ -35,6 +42,13 @@ def test_missing_hf_bot_token_prints_to_stdout(monkeypatch, tmp_path, capsys):
         parent="parent0000",
         sha_files=["submissions/aasist.yaml", "submissions/README.md"],
         parent_files=["submissions/README.md"],
+    )
+    monkeypatch.setattr(
+        post_merge_badge.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: api.list_repo_files(
+            repo_id, revision=revision, repo_type=repo_type
+        ),
     )
 
     def fake_dl(repo_id, filename, revision, repo_type):
@@ -60,6 +74,13 @@ def test_primary_metric_missing_exits_nonzero(monkeypatch, tmp_path):
         parent="parent0000",
         sha_files=["submissions/aasist.yaml", "submissions/README.md"],
         parent_files=["submissions/README.md"],
+    )
+    monkeypatch.setattr(
+        post_merge_badge.hf_fetch,
+        "list_repo_files",
+        lambda repo_id, revision=None, repo_type=None: api.list_repo_files(
+            repo_id, revision=revision, repo_type=repo_type
+        ),
     )
 
     def fake_dl(repo_id, filename, revision, repo_type):

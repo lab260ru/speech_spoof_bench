@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
+from datasets import Audio, ClassLabel, Features, Value
 
 from speech_spoof_bench import validate
 
@@ -40,6 +42,171 @@ def test_d7_unregistered_metric(synth_local_dataset):
     report = validate.validate_dataset(str(synth_local_dataset), skip_submissions=True)
     assert not report.ok
     assert any(c.id == "D7" and not c.passed for c in report.dataset_checks)
+
+
+def test_hf_dataset_checks_use_metadata_without_decoding_audio(monkeypatch):
+    source = SimpleNamespace(
+        is_local=False,
+        local_path=None,
+        canonical_id="Org/Ds",
+        metrics=["eer_percent"],
+    )
+
+    class MetadataOnlyDataset:
+        features = Features({
+            "path": Value("string"),
+            "audio": Audio(sampling_rate=16000),
+            "label": ClassLabel(names=["bonafide", "spoof"]),
+            "notes": Value("string"),
+        })
+
+        def __iter__(self):
+            raise AssertionError("online validation must not decode audio rows")
+
+    scan_rows = [
+        {"path": "a.flac", "notes": '{"utterance_id":"a"}'},
+        {"path": "b.flac", "notes": '{"utterance_id":"b"}'},
+    ]
+
+    def fake_resolve(spec, *, streaming=True, force_remote=False, columns=None):
+        assert spec == "Org/Ds"
+        assert force_remote is True
+        if columns is None:
+            raise AssertionError("HF metadata validation must not call load_dataset")
+        assert columns == ["notes", "path"]
+        return source, iter(scan_rows)
+
+    monkeypatch.setattr(
+        validate,
+        "_resolve_hf_metadata",
+        lambda spec: (source, MetadataOnlyDataset()),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        validate,
+        "hf_hub_download",
+        lambda **kw: (_ for _ in ()).throw(FileNotFoundError("no labels.parquet")),
+    )
+    monkeypatch.setattr(validate, "resolve", fake_resolve)
+    monkeypatch.setattr(validate, "_load_readme", lambda **kw: """---
+license: other
+language: [en]
+pretty_name: Test
+task_categories: [audio-classification]
+size_categories: [n<1K]
+configs: []
+tags: [arena-ready]
+arxiv: ["1234.5678"]
+---
+body
+""")
+
+    checks, _ = validate._check_dataset_side("Org/Ds", force_remote=True)
+    by_id = {c.id: c for c in checks}
+    assert by_id["D1"].passed
+    assert by_id["D2"].passed
+    assert by_id["D3"].passed
+    assert by_id["D4"].passed
+    assert by_id["D5"].passed
+
+
+def test_hf_metadata_resolver_does_not_call_datasets_builder(monkeypatch, tmp_path):
+    eval_yaml = tmp_path / "eval.yaml"
+    eval_yaml.write_text("""
+name: Test
+tasks:
+  - id: antispoofing_eval
+    split: test
+    metrics: [eer_percent]
+""")
+
+    monkeypatch.setattr(
+        validate,
+        "hf_hub_download",
+        lambda **kw: eval_yaml,
+    )
+    monkeypatch.setattr(
+        validate,
+        "load_dataset_builder",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("online validation must not glob remote parquet")
+        ),
+        raising=False,
+    )
+
+    source, ds = validate._resolve_hf_metadata("Org/Ds")
+    assert source.canonical_id == "Org/Ds"
+    assert set(ds.features.keys()) == {"path", "audio", "label", "notes"}
+    assert ds.features["audio"].sampling_rate == 16000
+    assert ds.features["label"].names == ["bonafide", "spoof"]
+
+
+def test_hf_dataset_checks_use_labels_file_without_streaming_shards(
+    monkeypatch, tmp_path
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    labels_path = tmp_path / "labels.parquet"
+    pq.write_table(
+        pa.table({
+            "utterance_id": pa.array(["a", "b"], pa.string()),
+            "label": pa.array([0, 1], pa.int8()),
+        }),
+        labels_path,
+    )
+
+    source = SimpleNamespace(
+        is_local=False,
+        local_path=None,
+        canonical_id="Org/Ds",
+        metrics=["eer_percent"],
+    )
+
+    class MetadataOnlyDataset:
+        features = Features({
+            "path": Value("string"),
+            "audio": Audio(sampling_rate=16000),
+            "label": ClassLabel(names=["bonafide", "spoof"]),
+            "notes": Value("string"),
+        })
+
+    def fake_resolve(spec, *, streaming=True, force_remote=False, columns=None):
+        raise AssertionError("online validation must not stream parquet shards")
+
+    def fake_download(*, repo_id, filename, repo_type):
+        assert repo_id == "Org/Ds"
+        assert repo_type == "dataset"
+        assert filename == "data/labels.parquet"
+        return labels_path
+
+    monkeypatch.setattr(
+        validate,
+        "_resolve_hf_metadata",
+        lambda spec: (source, MetadataOnlyDataset()),
+        raising=False,
+    )
+    monkeypatch.setattr(validate, "resolve", fake_resolve)
+    monkeypatch.setattr(validate, "hf_hub_download", fake_download)
+    monkeypatch.setattr(validate, "_load_readme", lambda **kw: """---
+license: other
+language: [en]
+pretty_name: Test
+task_categories: [audio-classification]
+size_categories: [n<1K]
+configs: []
+tags: [arena-ready]
+arxiv: ["1234.5678"]
+---
+body
+""")
+
+    checks, _ = validate._check_dataset_side("Org/Ds", force_remote=True)
+    by_id = {c.id: c for c in checks}
+    assert by_id["D4"].passed
+    assert "labels.parquet" in by_id["D4"].message
+    assert by_id["D5"].passed
+    assert "utterance_id" in by_id["D5"].message
 
 
 import hashlib

@@ -16,8 +16,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from huggingface_hub import HfApi, hf_hub_download
+from huggingface_hub import HfApi
 from jsonschema import ValidationError, validate
+
+from . import hf_fetch
 
 SCHEMA_PACKAGE = "speech_spoof_bench.schema"
 SCHEMA_FILENAME = "submission.schema.json"
@@ -64,8 +66,8 @@ def list_submission_files(dataset_id: str, *, api: HfApi | None = None) -> list[
 
     Excludes README.md and results_template.yaml.
     """
-    api = api or HfApi()
-    files = api.list_repo_files(repo_id=dataset_id, repo_type="dataset")
+    del api  # kept for compatibility with older tests/callers
+    files = hf_fetch.list_repo_files(dataset_id, repo_type="dataset")
     out: list[str] = []
     for f in files:
         if not f.startswith(SUBMISSIONS_DIR + "/"):
@@ -81,5 +83,5 @@ def list_submission_files(dataset_id: str, *, api: HfApi | None = None) -> list[
 
 def fetch_submission(dataset_id: str, path: str) -> dict[str, Any]:
     """Download a submission YAML and parse+validate it."""
-    local = hf_hub_download(repo_id=dataset_id, filename=path, repo_type="dataset")
+    local = hf_fetch.hub_download(repo_id=dataset_id, filename=path, repo_type="dataset")
     return parse_submission(Path(local).read_text())

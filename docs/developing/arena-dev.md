@@ -61,9 +61,19 @@ exercising:
 | `SPACE_COMMIT_TOKEN` | committing `cache.json` | state stays in memory only (fine locally) |
 | `GH_VERIFY_WORKFLOW_REPO` | overriding dispatch target | defaults to `lab260ru/speech_spoof_bench` |
 | `ARENA_SPACE_REPO` | overriding the Space repo id | defaults to the org Space |
+| `SSB_ARENA_MANIFEST_REPO` | staging Arena against a non-production manifest repo | defaults to `SpeechAntiSpoofingBenchmarks/arena-manifest` |
+| `SSB_ARENA_MANIFEST_REVISION` | staging Arena against a manifest branch/PR ref | defaults to the manifest repo's `main` |
 
 For UI/ranking work you typically need **none** of them — the cached state renders and the
 absent secrets just disable the live side effects.
+
+To preview an `arena-manifest` PR in a staging/local Arena without merging it:
+
+```bash
+SSB_ARENA_MANIFEST_REPO=SpeechAntiSpoofingBenchmarks/arena-manifest \
+SSB_ARENA_MANIFEST_REVISION=refs/pr/42 \
+uvicorn main:app --host 0.0.0.0 --port 7860
+```
 
 ## Testing the webhook locally
 

@@ -10,8 +10,8 @@ from typing import Any
 
 import yaml
 from datasets import Audio, Features, Value, load_dataset
-from huggingface_hub import hf_hub_download
 
+from .hf_fetch import hub_download as hf_hub_download
 from .metrics import is_registered
 
 _HF_ID_RE = re.compile(r"^[^/]+/[^/]+$")

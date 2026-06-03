@@ -8,16 +8,20 @@ bundled JSON Schema, and exposes a few small accessors.
 from __future__ import annotations
 
 import json
+import os
 from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import yaml
-from huggingface_hub import hf_hub_download
 from jsonschema import validate
+
+from .hf_fetch import hub_download as hf_hub_download
 
 MANIFEST_REPO = "SpeechAntiSpoofingBenchmarks/arena-manifest"
 MANIFEST_FILENAME = "manifest.yaml"
+MANIFEST_REPO_ENV = "SSB_ARENA_MANIFEST_REPO"
+MANIFEST_REVISION_ENV = "SSB_ARENA_MANIFEST_REVISION"
 SCHEMA_PACKAGE = "speech_spoof_bench.schema"
 SCHEMA_FILENAME = "manifest.schema.json"
 
@@ -38,15 +42,23 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     return _parse_and_validate(Path(path).read_text())
 
 
-def fetch_manifest() -> dict[str, Any]:
+def fetch_manifest(
+    repo_id: str | None = None,
+    revision: str | None = None,
+) -> dict[str, Any]:
     """Download manifest.yaml from HF, parse, validate, return dict.
 
-    No auth required (public dataset repo).
+    No auth required for the public production repo. Staging Spaces can point
+    at another manifest repo/ref via SSB_ARENA_MANIFEST_REPO and
+    SSB_ARENA_MANIFEST_REVISION.
     """
+    repo_id = repo_id or os.environ.get(MANIFEST_REPO_ENV) or MANIFEST_REPO
+    revision = revision if revision is not None else os.environ.get(MANIFEST_REVISION_ENV)
     local = hf_hub_download(
-        repo_id=MANIFEST_REPO,
+        repo_id=repo_id,
         repo_type="dataset",
         filename=MANIFEST_FILENAME,
+        revision=revision,
     )
     return _parse_and_validate(Path(local).read_text())
 

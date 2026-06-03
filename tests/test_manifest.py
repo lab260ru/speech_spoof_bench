@@ -86,10 +86,11 @@ def test_fetch_manifest_uses_hf_hub(monkeypatch, tmp_path):
     fake = _write(tmp_path, VALID)
     calls = {}
 
-    def fake_download(*, repo_id, repo_type, filename):
+    def fake_download(*, repo_id, repo_type, filename, revision=None):
         calls["repo_id"] = repo_id
         calls["repo_type"] = repo_type
         calls["filename"] = filename
+        calls["revision"] = revision
         return str(fake)
 
     monkeypatch.setattr(mf, "hf_hub_download", fake_download)
@@ -99,4 +100,31 @@ def test_fetch_manifest_uses_hf_hub(monkeypatch, tmp_path):
         "repo_id": "SpeechAntiSpoofingBenchmarks/arena-manifest",
         "repo_type": "dataset",
         "filename": "manifest.yaml",
+        "revision": None,
+    }
+
+
+def test_fetch_manifest_allows_staging_repo_and_revision(monkeypatch, tmp_path):
+    fake = _write(tmp_path, VALID)
+    calls = {}
+
+    def fake_download(*, repo_id, repo_type, filename, revision=None):
+        calls["repo_id"] = repo_id
+        calls["repo_type"] = repo_type
+        calls["filename"] = filename
+        calls["revision"] = revision
+        return fake
+
+    monkeypatch.setenv("SSB_ARENA_MANIFEST_REPO", "Org/staging-manifest")
+    monkeypatch.setenv("SSB_ARENA_MANIFEST_REVISION", "refs/pr/7")
+    monkeypatch.setattr(mf, "hf_hub_download", fake_download)
+
+    out = mf.fetch_manifest()
+
+    assert out["ranking_version"] == "v1"
+    assert calls == {
+        "repo_id": "Org/staging-manifest",
+        "repo_type": "dataset",
+        "filename": "manifest.yaml",
+        "revision": "refs/pr/7",
     }

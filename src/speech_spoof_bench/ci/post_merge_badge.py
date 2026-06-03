@@ -11,13 +11,14 @@ import yaml
 from huggingface_hub import HfApi, hf_hub_download
 
 from .. import badge, submission
+from ._hf_retry import retry_on_429
 
 logger = logging.getLogger(__name__)
 
 
 def _download_at_revision(repo_id: str, filename: str, revision: str, repo_type: str) -> str:
-    return hf_hub_download(repo_id=repo_id, filename=filename,
-                           revision=revision, repo_type=repo_type)
+    return retry_on_429(hf_hub_download, repo_id=repo_id, filename=filename,
+                        revision=revision, repo_type=repo_type)
 
 
 def _parent_sha(api: HfApi, repo: str, sha: str) -> str | None:
@@ -26,7 +27,7 @@ def _parent_sha(api: HfApi, repo: str, sha: str) -> str | None:
     list_repo_commits returns newest-first; the entry after <sha> is its
     parent. Returns None if <sha> isn't found or is the first commit.
     """
-    commits = list(api.list_repo_commits(repo_id=repo, repo_type="dataset"))
+    commits = list(retry_on_429(api.list_repo_commits, repo_id=repo, repo_type="dataset"))
     for i, c in enumerate(commits):
         if c.commit_id == sha or c.commit_id.startswith(sha) or sha.startswith(c.commit_id):
             return commits[i + 1].commit_id if i + 1 < len(commits) else None
@@ -42,7 +43,7 @@ def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
     difference from verify_pr._changed_submissions, which diffs an open PR
     branch against main where the file isn't yet present.)
     """
-    sha_files = set(api.list_repo_files(repo_id=repo, revision=sha, repo_type="dataset"))
+    sha_files = set(retry_on_429(api.list_repo_files, repo_id=repo, revision=sha, repo_type="dataset"))
     candidates = {
         f for f in sha_files
         if f.startswith("submissions/") and f.endswith(".yaml")
@@ -52,7 +53,7 @@ def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
     if parent is None:
         # No parent (first commit) — treat every candidate as added.
         return sorted(candidates)
-    parent_files = set(api.list_repo_files(repo_id=repo, revision=parent, repo_type="dataset"))
+    parent_files = set(retry_on_429(api.list_repo_files, repo_id=repo, revision=parent, repo_type="dataset"))
     # Added by this merge = present at <sha> but not at its parent. Catches
     # added files; amended/corrected re-submissions (content-only edits) are
     # rare and out of scope, same as verify_pr.
@@ -77,7 +78,8 @@ def _sentinel_for(sha: str, path: str) -> str:
 
 def _already_posted(api: HfApi, repo: str, pr: int, sentinel: str) -> bool:
     try:
-        details = api.get_discussion_details(
+        details = retry_on_429(
+            api.get_discussion_details,
             repo_id=repo, repo_type="dataset", discussion_num=pr,
         )
     except Exception as exc:  # noqa: BLE001
@@ -97,8 +99,8 @@ def _post_comment(repo: str, pr: int, body: str) -> None:
         print(body)
         return
     api = HfApi(token=token)
-    api.comment_discussion(repo_id=repo, repo_type="dataset",
-                           discussion_num=pr, comment=body)
+    retry_on_429(api.comment_discussion, repo_id=repo, repo_type="dataset",
+                 discussion_num=pr, comment=body)
 
 
 def run(*, repo: str, pr: int, sha: str,

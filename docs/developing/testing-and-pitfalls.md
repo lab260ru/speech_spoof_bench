@@ -171,6 +171,38 @@ Space needs.
 
 ---
 
+## HF `429 Too Many Requests` in `verify-hf-pr` / `post-merge-badge`
+
+**Symptom:** A CI run fails with `429 Too Many Requests` from an HF API call
+(commonly `list_repo_files` → `paginate`). Happens when **several dataset PRs
+are merged at once** — e.g. one model scored across several datasets, each merge
+dispatching its own run.
+
+**Cause:** HF throttles at the **account/IP/edge level**, not per dataset. Parallel
+CI runs' aggregate traffic trips the limit. Runs on *different* datasets still
+compete.
+
+**Mitigations in place:**
+
+1. **Serialization.** Both workflows share `concurrency: {group: hf-ci,
+   cancel-in-progress: false}`, so at most one HF-touching run executes at a
+   time, account-wide. Queued runs wait rather than being cancelled.
+2. **Retry/backoff.** `ci/_hf_retry.py::retry_on_429` wraps every HF API call in
+   `verify_pr.py`, `post_merge_badge.py`, and `hf_fetch.py` with bounded
+   exponential backoff that honors `Retry-After`.
+
+**Known residual — pending-queue depth.** GitHub keeps only **1 running + 1
+pending** run per concurrency group. Dispatching more than two near-simultaneously
+causes older *pending* runs to be cancelled. If a badge/verdict is missing after a
+burst of merges, re-dispatch it: committing to `refs/pr/N` re-fires the webhook
+(see the `verify-pr re-dispatch` recovery note).
+
+**Not covered:** the `load_dataset(streaming=True)` labels stream in
+`reproduce.py` is not individually retried (it is an iterator inside the
+`datasets` library). Serialization makes a 429 there unlikely.
+
+---
+
 ## The minimum bar before "done"
 
 For a **model submission:** offline run sane → `reproduce --scoring --no-local` matches →

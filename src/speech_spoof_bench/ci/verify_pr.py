@@ -12,6 +12,7 @@ from typing import Optional
 from huggingface_hub import HfApi, hf_hub_download
 
 from .. import reproduce, submission
+from ._hf_retry import retry_on_429
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,8 @@ class Verdict:
 
 
 def _download_at_revision(repo_id: str, filename: str, revision: str, repo_type: str) -> str:
-    return hf_hub_download(repo_id=repo_id, filename=filename,
-                           revision=revision, repo_type=repo_type)
+    return retry_on_429(hf_hub_download, repo_id=repo_id, filename=filename,
+                        revision=revision, repo_type=repo_type)
 
 
 def _run_scoring_repro(data: dict) -> tuple[bool, str]:
@@ -49,8 +50,8 @@ def _run_scoring_repro(data: dict) -> tuple[bool, str]:
 
 
 def _changed_submissions(api: HfApi, repo: str, branch: str) -> list[str]:
-    main_files = set(api.list_repo_files(repo_id=repo, repo_type="dataset"))
-    branch_files = set(api.list_repo_files(repo_id=repo, revision=branch, repo_type="dataset"))
+    main_files = set(retry_on_429(api.list_repo_files, repo_id=repo, repo_type="dataset"))
+    branch_files = set(retry_on_429(api.list_repo_files, repo_id=repo, revision=branch, repo_type="dataset"))
     candidates = {
         f for f in branch_files
         if f.startswith("submissions/") and f.endswith(".yaml")
@@ -115,8 +116,8 @@ def _post_comment(repo: str, pr: int, body: str) -> None:
         print(body)
         return
     api = HfApi(token=token)
-    api.comment_discussion(repo_id=repo, repo_type="dataset",
-                           discussion_num=pr, comment=body)
+    retry_on_429(api.comment_discussion, repo_id=repo, repo_type="dataset",
+                 discussion_num=pr, comment=body)
 
 
 def run(*, repo: str, pr: int, branch: str,

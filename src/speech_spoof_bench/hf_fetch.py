@@ -15,6 +15,8 @@ from pathlib import Path
 
 from huggingface_hub import hf_hub_download
 
+from .ci._hf_retry import retry_on_429
+
 _HF_RESOLVE_RE = re.compile(
     r"^https://huggingface\.co/(?P<repo>[^/]+/[^/]+)/resolve/"
     r"(?P<sha>[0-9a-f]{7,40})/(?P<path>.+)$"
@@ -36,7 +38,8 @@ def download(url: str) -> tuple[Path, str]:
     """
     repo, sha, path = parse_hf_resolve_url(url)
     token = os.environ.get("HF_TOKEN") or None
-    local = hf_hub_download(
+    local = retry_on_429(
+        hf_hub_download,
         repo_id=repo,
         filename=path,
         repo_type="model",

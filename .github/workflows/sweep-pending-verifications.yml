@@ -1,0 +1,50 @@
+name: sweep-pending-verifications
+
+# Self-healing backstop: the HF→GitHub webhook dispatches verify-pr into the
+# `hf-ci` concurrency group, which GitHub caps at 1 running + 1 pending. A burst
+# of submission PRs (one model across many datasets) drops the extra dispatches.
+# This scheduled sweep finds open PRs with no verify-pr verdict and re-dispatches
+# verify-pr for up to `max` of them per run (default 1), so a backlog drains one
+# at a time without re-creating the burst eviction.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes
+  workflow_dispatch:
+    inputs:
+      max:
+        description: "max PRs to dispatch this run"
+        required: false
+        default: "1"
+        type: string
+      dry_run:
+        description: "list verdict-less PRs without dispatching (true/false)"
+        required: false
+        default: "false"
+        type: string
+
+# Own group so the sweep never blocks (or is blocked by) verify/post-merge runs.
+concurrency:
+  group: hf-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e .
+      - name: Sweep
+        env:
+          HF_TOKEN: ${{ secrets.HF_BOT_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          ARGS="--max ${{ github.event.inputs.max || '1' }}"
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          speech-spoof-bench ci sweep $ARGS

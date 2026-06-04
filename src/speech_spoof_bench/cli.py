@@ -178,6 +178,12 @@ def _cmd_ci_post_merge_badge(args: argparse.Namespace) -> int:
     return post_merge_badge.run(repo=args.repo, pr=int(args.pr), sha=args.sha)
 
 
+def _cmd_ci_sweep(args: argparse.Namespace) -> int:
+    from .ci import sweep
+    datasets = None if args.datasets == ["all"] else args.datasets
+    return sweep.run(datasets=datasets, max_dispatch=args.max, dry_run=args.dry_run)
+
+
 def _cmd_submit(args: argparse.Namespace) -> int:
     from . import submit as submit_mod
 
@@ -355,6 +361,18 @@ def build_parser() -> argparse.ArgumentParser:
     pmb.add_argument("--pr", required=True, help="HF PR (discussion) number")
     pmb.add_argument("--sha", required=True, help="merge commit sha on the dataset main branch")
     pmb.set_defaults(func=_cmd_ci_post_merge_badge)
+
+    sw = ci_sub.add_parser(
+        "sweep",
+        help="re-dispatch verify-pr for open PRs missing a verdict (self-healing backstop)",
+    )
+    sw.add_argument("--datasets", nargs="+", default=["all"],
+        help="'all' (every manifest dataset) or space-separated dataset ids")
+    sw.add_argument("--max", type=int, default=1,
+        help="max PRs to dispatch this run (default 1; stays under the hf-ci 1-running+1-pending cap)")
+    sw.add_argument("--dry-run", action="store_true",
+        help="list verdict-less PRs without dispatching")
+    sw.set_defaults(func=_cmd_ci_sweep)
 
     return p
 

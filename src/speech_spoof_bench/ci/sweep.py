@@ -54,16 +54,21 @@ def _has_verdict(api: HfApi, repo: str, pr_num: int) -> bool:
     return False
 
 
-def _dispatch_verify_workflow(repo: str, pr_num: int) -> None:
+def _dispatch_verify_workflow(repo: str, pr_num: int) -> bool:
     """Fire the verify-hf-pr GitHub workflow for one PR (workflow_dispatch).
 
-    Mirrors the webhook's dispatch. Never raises: a failed dispatch just means
-    the PR is picked up by the next scheduled sweep.
+    Mirrors the webhook's dispatch. Never raises. Returns ``True`` only if the
+    dispatch request was accepted; ``False`` if no token is configured or the
+    request failed (the PR is then left for a later sweep).
+
+    Auth token is read from ``GH_TOKEN`` or ``GH_PAT``. In the GitHub Actions
+    workflow this is the built-in ``GITHUB_TOKEN`` (with ``actions: write``),
+    which *can* trigger a ``workflow_dispatch`` run in the same repo.
     """
-    token = os.environ.get("GH_PAT")
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GH_PAT")
     if not token:
-        logger.warning("GH_PAT not set; cannot dispatch verify-pr for %s#%d", repo, pr_num)
-        return
+        logger.warning("no GH_TOKEN/GH_PAT; cannot dispatch verify-pr for %s#%d", repo, pr_num)
+        return False
     target = os.environ.get("GH_VERIFY_WORKFLOW_REPO", _DEFAULT_TARGET)
     url = f"{_GH_API}/repos/{target}/actions/workflows/verify-hf-pr.yml/dispatches"
     data = json.dumps({
@@ -80,11 +85,14 @@ def _dispatch_verify_workflow(repo: str, pr_num: int) -> None:
     )
     try:
         urllib.request.urlopen(req, timeout=10)
+        return True
     except urllib.error.HTTPError as exc:  # noqa: PERF203
         logger.warning("verify-pr dispatch failed for %s#%d: %s %s",
                        repo, pr_num, exc.code, exc.read()[:200])
+        return False
     except Exception as exc:  # noqa: BLE001
         logger.warning("verify-pr dispatch error for %s#%d: %s", repo, pr_num, exc)
+        return False
 
 
 def run(
@@ -122,15 +130,24 @@ def run(
 
     candidates.sort()
     to_do = candidates if dry_run else candidates[:max_dispatch]
+    dispatched = 0
     for repo, pr_num in to_do:
         if dry_run:
             logger.info("sweep: would dispatch verify-pr for %s#%d", repo, pr_num)
-        else:
-            dispatch(repo, pr_num)
+            dispatched += 1
+        elif dispatch(repo, pr_num):
             logger.info("sweep: dispatched verify-pr for %s#%d", repo, pr_num)
+            dispatched += 1
+        else:
+            logger.warning("sweep: dispatch skipped/failed for %s#%d", repo, pr_num)
 
-    n_done = 0 if dry_run else len(to_do)
-    logger.info("sweep: %d verdict-less PR(s); %d dispatched, %d remaining%s",
-                len(candidates), n_done, len(candidates) - n_done,
-                " (dry-run)" if dry_run else "")
+    logger.info("sweep: %d verdict-less PR(s); %d %s, %d remaining%s",
+                len(candidates), dispatched,
+                "would dispatch" if dry_run else "dispatched",
+                len(candidates) - dispatched, " (dry-run)" if dry_run else "")
+    # Surface a missing-token misconfig as a non-zero exit so the CI run is red.
+    if not dry_run and to_do and dispatched == 0:
+        logger.error("sweep: had %d candidate(s) but dispatched none "
+                     "(missing GH token?)", len(to_do))
+        return 1
     return 0

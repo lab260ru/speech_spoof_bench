@@ -19,6 +19,14 @@ def _verdict_comment():
     return _comment("**speech-spoof-bench ci verify-pr** — ✅ all checks passed")
 
 
+def _recorder(sent):
+    """A dispatch stub that records calls and reports success (True)."""
+    def _d(repo, pr_num):
+        sent.append((repo, pr_num))
+        return True
+    return _d
+
+
 def _api(discussions_by_repo, events_by_pr):
     """Build a MagicMock HfApi.
 
@@ -45,7 +53,7 @@ def test_dispatches_only_verdictless_open_prs():
     )
     sent = []
     rc = sweep.run(datasets=["Org/A"], max_dispatch=10, api=api,
-                   dispatch=lambda r, p: sent.append((r, p)))
+                   dispatch=_recorder(sent))
     assert rc == 0
     assert sent == [("Org/A", 2)]
 
@@ -61,7 +69,7 @@ def test_respects_max_dispatch_one_at_a_time():
     )
     sent = []
     sweep.run(datasets=["Org/A"], max_dispatch=1, api=api,
-              dispatch=lambda r, p: sent.append((r, p)))
+              dispatch=_recorder(sent))
     # Only the first (sorted) candidate is dispatched this run.
     assert sent == [("Org/A", 3)]
 
@@ -73,7 +81,7 @@ def test_skips_closed_and_non_pr_discussions():
     )
     sent = []
     sweep.run(datasets=["Org/A"], max_dispatch=10, api=api,
-              dispatch=lambda r, p: sent.append((r, p)))
+              dispatch=_recorder(sent))
     assert sent == [("Org/A", 8)]
 
 
@@ -81,8 +89,18 @@ def test_dry_run_dispatches_nothing():
     api = _api({"Org/A": [_disc(9)]}, {("Org/A", 9): []})
     sent = []
     sweep.run(datasets=["Org/A"], max_dispatch=5, api=api, dry_run=True,
-              dispatch=lambda r, p: sent.append((r, p)))
+              dispatch=_recorder(sent))
     assert sent == []
+
+
+def test_zero_dispatched_despite_candidates_returns_nonzero():
+    """If there are candidates but the dispatch fails for all of them (e.g. no
+    GH token configured), the run must exit non-zero so the CI run goes red —
+    the integration-test failure mode that previously logged a false 'dispatched'."""
+    api = _api({"Org/A": [_disc(11)]}, {("Org/A", 11): []})
+    rc = sweep.run(datasets=["Org/A"], max_dispatch=1, api=api,
+                   dispatch=lambda r, p: False)  # dispatch always fails
+    assert rc == 1
 
 
 def test_one_bad_repo_does_not_abort_sweep():
@@ -95,6 +113,6 @@ def test_one_bad_repo_does_not_abort_sweep():
     api.get_discussion_details.side_effect = lambda repo_id, repo_type, discussion_num: SimpleNamespace(events=[])
     sent = []
     rc = sweep.run(datasets=["Org/A", "Org/B"], max_dispatch=10, api=api,
-                   dispatch=lambda r, p: sent.append((r, p)))
+                   dispatch=_recorder(sent))
     assert rc == 0
     assert sent == [("Org/B", 10)]

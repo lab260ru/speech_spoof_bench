@@ -13,6 +13,7 @@ project-local skill — the dataset-side sibling of `submitting-arena-model`.
 | Gates | **One** routine stop: the written plan. After approval, run build→validate→push→PR autonomously, then report. (Mirrors `submitting-arena-model`.) |
 | Location | Project-local: `speech-spoof-bench/.claude/skills/adding-arena-dataset/` |
 | Files | `SKILL.md` + `plan-template.md` (same two-file shape as `submitting-arena-model`) |
+| Dataset working dir | **`benchmarks/<Dataset>/`**, alongside the existing datasets — same convention as the model skill's `benchmarks/<Model>/`. The skill scaffolds, builds, and validates there; that dir is what gets pushed to HF. |
 
 ## Why a skill (not just docs)
 
@@ -46,8 +47,10 @@ the process discipline + pitfalls, exactly as `submitting-arena-model` does for 
 
 Generalized from the ASVspoof5 run:
 
-1. **Scaffold** — `speech-spoof-bench scaffold-dataset --name <N> --output-dir ./<N>`; copy
-   `LICENSE.txt` / `.gitattributes` / `.gitignore` from a reference dataset dir.
+1. **Scaffold** — from the `benchmarks/` dir, `speech-spoof-bench scaffold-dataset --name <N>
+   --output-dir ./<N>` so the working dir is **`benchmarks/<N>/`** next to the other datasets;
+   copy `LICENSE.txt` / `.gitattributes` / `.gitignore` from a reference dataset dir. (Note:
+   `benchmarks/` may be a symlink to a big drive — see pitfalls; that's fine and intended.)
 2. **Probe decodability on ALL clips** (not a sample) with soundfile — the exact decoder HF
    `datasets`/validator/models use. **0 failures → CLEAN raw-byte embed; any failure → re-encode
    path** (librosa→clean FLAC, à la `ASVspoof2021_LA`). This is the make-or-break correctness

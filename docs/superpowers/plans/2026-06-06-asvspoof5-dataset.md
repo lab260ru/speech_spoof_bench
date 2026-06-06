@@ -439,6 +439,8 @@ tags:
   - speech
   - benchmark
   - arena-ready
+arxiv:
+  - "2408.08739"
 ---
 
 # ASVspoof 5 (track 1, eval)

@@ -101,7 +101,7 @@ Generalized from the ASVspoof5 run:
 ## plan-template.md
 
 Two halves (same split as the model skill's template):
-- **Upfront decisions (the gate reviews this):** dataset name + lowercase slug; raw source paths
+- **Upfront decisions (the gate reviews this):** dataset Name (source casing, e.g. `ASVspoof5` — = dir + HF repo + manifest id, no lowercase slug); raw source paths
   (read-only); protocol column→field mapping + expected total/bonafide/spoof counts; license
   (SPDX + redistribution confirmation); manifest set (**Core by default**); builder path
   (clean-embed vs re-encode, pending the probe); shard sizing; reference dataset dir to copy from.

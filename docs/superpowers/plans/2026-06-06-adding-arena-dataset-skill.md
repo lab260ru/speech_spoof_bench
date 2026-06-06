@@ -87,9 +87,12 @@ Drive a raw audio dir + its label/protocol into an Arena-ready HF dataset and a 
 PR autonomously after it. The authoritative shape + rules live in the repo docs; this skill is
 the controllable runbook over them.
 
-**Input:** a raw audio dir + a protocol/label source. Infer the rest: dataset name + **slug
-(lowercase)**; the protocol column→field mapping and expected counts; license (confirm
-redistribution); manifest set (**Core by default**; Extended only if explicitly requested).
+**Input:** a raw audio dir + a protocol/label source. Infer the rest: the dataset **Name**
+(keep the source's casing — e.g. `ASVspoof5`, `CD-ADD` — it is used verbatim for `benchmarks/<Name>/`,
+the HF repo `SpeechAntiSpoofingBenchmarks/<Name>`, and the manifest id; there is **no** separate
+lowercase repo slug — lowercase slugs are a model-submission concept); the protocol column→field
+mapping and expected counts; license (confirm redistribution); manifest set (**Core by default**;
+Extended only if explicitly requested).
 
 ## Read these first (do not skip)
 
@@ -103,7 +106,7 @@ redistribution); manifest set (**Core by default**; Extended only if explicitly 
 
 | Gate | When | Present to user | Proceed on |
 |------|------|-----------------|------------|
-| **Plan** | Plan written, **before** building/probing/pushing | dataset name+slug, raw source paths, protocol column→field map + expected total/bonafide/spoof, license (+redistribution), manifest set (**Core by default**; Extended only if explicitly requested — flag the coverage impact), builder path (clean-embed vs re-encode, pending the probe), shard sizing | explicit OK |
+| **Plan** | Plan written, **before** building/probing/pushing | dataset **Name** (source casing; = `benchmarks/<Name>/` + HF repo + manifest id, no lowercase slug), raw source paths, protocol column→field map + expected total/bonafide/spoof, license (+redistribution), manifest set (**Core by default**; Extended only if explicitly requested — flag the coverage impact), builder path (clean-embed vs re-encode, pending the probe), shard sizing | explicit OK |
 
 After this gate, **do not ask for routine approval** — run the pipeline to the end, then report.
 Stop only for an upfront blocker (see Control rules).
@@ -180,6 +183,7 @@ symlink to a big drive; that's fine, the parquet lands there).
 | New dataset shows an empty board | Seed it: submit the random baseline (`…random_baseline:RandomBaseline`) via `submitting-arena-model` — every Core dataset carries `submissions/random-baseline.yaml` |
 | Manifest clone diverges / accidental push | Revert local `arena-manifest` edits after opening the PR |
 | Re-shard breaks all submissions | `utterance_id` is the immutable join key — keep ids stable |
+| HF repo created with a lowercased name | The dataset id is the **CamelCase Name** (e.g. `ASVspoof5`), used for dir + repo + manifest id; don't lowercase it — lowercase slugs are model-side only |
 
 ## Reference
 
@@ -223,7 +227,7 @@ Create the file with exactly this content:
 
 # Plan (reviewed at the 🚦 PLAN GATE — before any probe/build/push)
 
-- **Dataset name / slug:** <Name> / <name-slug>  (slug MUST be lowercase)
+- **Dataset Name:** <Name>  (source casing, e.g. `ASVspoof5` — used verbatim for `benchmarks/<Name>/`, HF repo `SpeechAntiSpoofingBenchmarks/<Name>`, and the manifest id; no lowercase slug)
 - **Raw source (read-only):** audio dir <path>; protocol/label file <path>
 - **Date:** <YYYY-MM-DD>
 

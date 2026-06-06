@@ -65,14 +65,23 @@ Generalized from the ASVspoof5 run:
    then a **fast online sanity check** (`load_dataset(..., streaming=True)` first rows decode +
    read `data/labels.parquet` counts) — **NOT** the full online `validate-dataset` (it downloads
    every shard, ~80 GB / ~2 h, redundant since xet is content-addressed). Capture the commit SHA.
-6. **Manifest PR** — edit local `arena-manifest/manifest.yaml` (add to `core_set` or `extended` at
-   the pinned SHA), append a `dataset_added` `CHANGELOG.yaml` event, validate with
-   `manifest.load_manifest`, open the PR via `HfApi().create_commit(..., create_pr=True)`, then
-   **revert the local clone** (PR holds the change). No `schema_version`/`ranking_version` bump
-   (data change). Revision must be lowercase hex 7–40.
-7. **Report** — repo + SHA + PR URL; flag maintainer to-dos: review/merge (Core re-computes
-   coverage), re-ingest to subscribe the webhook, fill the reproduction block when the first
-   submission lands.
+6. **Manifest PR** — edit local `arena-manifest/manifest.yaml` (add to **`core_set` by default**;
+   `extended` only if explicitly requested) at the pinned SHA, append a `dataset_added`
+   `CHANGELOG.yaml` event, validate with `manifest.load_manifest`, open the PR via
+   `HfApi().create_commit(..., create_pr=True)`, then **revert the local clone** (PR holds the
+   change). No `schema_version`/`ranking_version` bump (data change). Revision must be lowercase
+   hex 7–40.
+7. **Seed the random baseline** — give the new dataset its first leaderboard row + an end-to-end
+   submission-path smoke test. Submit the package's random baseline
+   (`speech_spoof_bench.examples.random_baseline:RandomBaseline`, model repo
+   `SpeechAntiSpoofingBenchmarks/random-baseline-asas`, EER≈50%) against the new dataset **via the
+   `submitting-arena-model` skill** (don't duplicate its compute→MR→verify→merge→reproduction
+   runbook). Every existing Core dataset already carries a `submissions/random-baseline.yaml`; this
+   matches the convention. Note: the submission's `verify-pr` only routes once the dataset is
+   ingested, so the verify/merge half may wait on the maintainer's merge + re-ingest.
+8. **Report** — repo + SHA + manifest PR URL + baseline submission PR URL; flag maintainer to-dos:
+   review/merge the manifest PR (Core re-computes coverage), re-ingest to subscribe the webhook,
+   merge the baseline submission + fill its reproduction block.
 
 ## Common pitfalls table (lived experience → baked into SKILL.md)
 
@@ -84,7 +93,8 @@ Generalized from the ASVspoof5 run:
 | Publish step hangs for hours | Online `validate-dataset` **downloads every shard** (~80 GB); use a streaming + `labels.parquet` sanity check instead |
 | D6 fails: missing `arxiv` | Front-matter needs an `arxiv` key; no arXiv → put the **DOI** there (see `reference_paper_no_arxiv`) |
 | `_verify` count wrong after re-shard | Stale `-of-NNNNN` shards from a prior run — build must delete mismatched-suffix shards first |
-| Coverage shifts for every model | Adding to **Core** re-computes coverage — a deliberate, plan-time decision; call it out in the PR |
+| Coverage shifts for every model | Datasets default to **Core** (re-computes coverage) — expected; call it out in the PR. Extended only if explicitly requested |
+| New dataset has an empty board | Seed it: submit the random baseline (`…random_baseline:RandomBaseline`) via `submitting-arena-model`; every Core dataset carries `submissions/random-baseline.yaml` |
 | Local manifest clone diverges / risk of direct push | Revert the local `arena-manifest` edits after the PR is opened |
 | Re-shard breaks all submissions | `utterance_id` is the immutable join key — keep ids stable across re-shards |
 
@@ -93,10 +103,11 @@ Generalized from the ASVspoof5 run:
 Two halves (same split as the model skill's template):
 - **Upfront decisions (the gate reviews this):** dataset name + lowercase slug; raw source paths
   (read-only); protocol column→field mapping + expected total/bonafide/spoof counts; license
-  (SPDX + redistribution confirmation); Core vs Extended; builder path (clean-embed vs re-encode,
-  pending the probe); shard sizing; reference dataset dir to copy from.
+  (SPDX + redistribution confirmation); manifest set (**Core by default**); builder path
+  (clean-embed vs re-encode, pending the probe); shard sizing; reference dataset dir to copy from.
 - **Execution log (filled autonomously):** probe result; chosen read params + build time; offline
-  validate result; HF repo + SHA; online sanity result; manifest PR URL; maintainer to-dos.
+  validate result; HF repo + SHA; online sanity result; manifest PR URL; **random-baseline
+  submission PR URL**; maintainer to-dos.
 
 ## Non-goals / YAGNI
 

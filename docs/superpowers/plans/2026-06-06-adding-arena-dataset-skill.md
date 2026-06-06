@@ -56,8 +56,10 @@ Write the agent's wrong/weak calls into a scratch list (used in Task 2). Expecte
 5. Defaults to Extended or silently picks Core without flagging the **coverage** impact.
 6. Forgets `labels.parquet`, or leaves the local `arena-manifest` clone dirty.
 7. Doesn't put the working dir under `benchmarks/<Dataset>/`.
+8. Defaults to Extended (or dithers) instead of **Core by default**.
+9. Stops at the manifest PR — doesn't **seed the random baseline** so the new dataset has a first leaderboard row.
 
-Expected: at least 3–4 of these appear. This confirms the skill teaches something non-obvious.
+Expected: at least 4–5 of these appear. This confirms the skill teaches something non-obvious.
 
 ---
 
@@ -87,7 +89,7 @@ the controllable runbook over them.
 
 **Input:** a raw audio dir + a protocol/label source. Infer the rest: dataset name + **slug
 (lowercase)**; the protocol column→field mapping and expected counts; license (confirm
-redistribution); Core vs Extended (a deliberate, plan-time call).
+redistribution); manifest set (**Core by default**; Extended only if explicitly requested).
 
 ## Read these first (do not skip)
 
@@ -101,7 +103,7 @@ redistribution); Core vs Extended (a deliberate, plan-time call).
 
 | Gate | When | Present to user | Proceed on |
 |------|------|-----------------|------------|
-| **Plan** | Plan written, **before** building/probing/pushing | dataset name+slug, raw source paths, protocol column→field map + expected total/bonafide/spoof, license (+redistribution), **Core vs Extended** (flag the coverage impact), builder path (clean-embed vs re-encode, pending the probe), shard sizing | explicit OK |
+| **Plan** | Plan written, **before** building/probing/pushing | dataset name+slug, raw source paths, protocol column→field map + expected total/bonafide/spoof, license (+redistribution), manifest set (**Core by default**; Extended only if explicitly requested — flag the coverage impact), builder path (clean-embed vs re-encode, pending the probe), shard sizing | explicit OK |
 
 After this gate, **do not ask for routine approval** — run the pipeline to the end, then report.
 Stop only for an upfront blocker (see Control rules).
@@ -135,14 +137,23 @@ symlink to a big drive; that's fine, the parquet lands there).
      `load_dataset(..., streaming=True)` first rows decode + read `data/labels.parquet` counts.
      **Do NOT run the full online `validate-dataset`** — it downloads every shard (~80 GB / hours)
      and xet is content-addressed, so offline-green + this sanity check is sufficient. Capture the SHA.
-  f. **Manifest PR.** Edit local `arena-manifest/manifest.yaml` (add to `core_set` or `extended`
-     at the pinned **lowercase-hex** SHA); append a `dataset_added` `CHANGELOG.yaml` event;
-     validate with `python -c "from speech_spoof_bench import manifest; manifest.load_manifest('manifest.yaml')"`;
+  f. **Manifest PR.** Edit local `arena-manifest/manifest.yaml` (add to **`core_set` by default**;
+     `extended` only if explicitly requested) at the pinned **lowercase-hex** SHA; append a
+     `dataset_added` `CHANGELOG.yaml` event; validate with
+     `python -c "from speech_spoof_bench import manifest; manifest.load_manifest('manifest.yaml')"`;
      open the PR via `HfApi().create_commit(..., create_pr=True)`; then **revert the local clone**
      (the PR holds the change). No `schema_version`/`ranking_version` bump (data change).
-  g. **Report** repo + SHA + PR URL; flag maintainer to-dos: review/merge (Core re-computes every
-     submission's coverage), re-ingest to subscribe the webhook, fill the reproduction block when
-     the first submission lands.
+  g. **Seed the random baseline.** Give the dataset its first leaderboard row + an end-to-end
+     submission smoke test: submit the package's random baseline
+     (`speech_spoof_bench.examples.random_baseline:RandomBaseline`, model repo
+     `SpeechAntiSpoofingBenchmarks/random-baseline-asas`, EER≈50%) against the new dataset
+     **via `submitting-arena-model`** — **REQUIRED SUB-SKILL** for the compute→MR→verify→merge→
+     reproduction mechanics; do not duplicate them here. Every Core dataset already carries a
+     `submissions/random-baseline.yaml`. The submission's `verify-pr` only routes once the dataset
+     is ingested, so its verify/merge half may wait on the maintainer's merge + re-ingest.
+  h. **Report** repo + SHA + manifest PR URL + baseline submission PR URL; flag maintainer to-dos:
+     review/merge the manifest PR (Core re-computes every submission's coverage), re-ingest to
+     subscribe the webhook, merge the baseline submission + fill its reproduction block.
 
 ## Control rules
 
@@ -165,7 +176,8 @@ symlink to a big drive; that's fine, the parquet lands there).
 | Publish step hangs for hours | Online `validate-dataset` downloads **every** shard; use streaming + `labels.parquet` sanity check instead |
 | D6 fails: missing `arxiv` | Front-matter needs `arxiv`; no arXiv → put the **DOI** there |
 | `_verify` count wrong after re-shard | Stale `-of-NNNNN` shards — delete mismatched-suffix shards first |
-| Coverage shifts for every model | Adding to **Core** re-computes coverage — deliberate, plan-time; call it out in the PR |
+| Coverage shifts for every model | Datasets default to **Core** (re-computes coverage) — expected; call it out in the PR. Extended only if explicitly requested |
+| New dataset shows an empty board | Seed it: submit the random baseline (`…random_baseline:RandomBaseline`) via `submitting-arena-model` — every Core dataset carries `submissions/random-baseline.yaml` |
 | Manifest clone diverges / accidental push | Revert local `arena-manifest` edits after opening the PR |
 | Re-shard breaks all submissions | `utterance_id` is the immutable join key — keep ids stable |
 
@@ -225,7 +237,7 @@ Create the file with exactly this content:
 - SPDX / HF tag: <e.g. odc-by>; redistribution permitted: <yes — basis>
 
 ## Manifest placement
-- **Core or Extended:** <choice>  (Core re-computes coverage for every existing submission)
+- **Set:** Core (default)  | <Extended — only if explicitly requested>  (Core re-computes coverage for every existing submission)
 
 ## Build approach (confirm clean vs re-encode after the whole-set probe)
 - Source SR / format: <e.g. 16 kHz mono FLAC>; clip duration range: <s>
@@ -244,10 +256,12 @@ Create the file with exactly this content:
 - [ ] `validate-dataset ./<N> --skip-submissions` → D1–D7 green
 - [ ] Pushed `SpeechAntiSpoofingBenchmarks/<N>` @ `<sha>`; online sanity (stream + labels.parquet) OK
 - [ ] Manifest PR (`<core_set|extended>` @ `<sha>` + CHANGELOG `dataset_added`): <PR URL>; local clone reverted
+- [ ] Random-baseline seeded (via `submitting-arena-model`): submission PR <URL>; EER≈50%
 
 ## Maintainer to-dos (surface in final report)
 - Review/merge the manifest PR (Core changes everyone's coverage)
-- Re-ingest to subscribe the webhook; fill the reproduction block when the first submission lands
+- Re-ingest to subscribe the webhook
+- Merge the random-baseline submission + fill its reproduction block (its verify-pr routes only after re-ingest)
 
 ## Notes / guideline discrepancies
 - <record any official-doc inaccuracies; propose fix + ask before editing official docs>
@@ -270,9 +284,10 @@ validation, and manifest placement."
 
 Confirm the agent's answer now: (1) probes **all** clips; (2) uses **sorted-order** reads, ~64
 workers; (3) uses the **streaming sanity check**, not full online validate; (4) includes the
-`arxiv`/DOI key; (5) treats **Core vs Extended** as a flagged gate decision; (6) emits
-`labels.parquet` + reverts the clone; (7) works under `benchmarks/<Dataset>/`.
-Expected: all 7 addressed. Record any that the agent still misses.
+`arxiv`/DOI key; (5) defaults to **Core** (flagging the coverage impact), not Extended; (6) emits
+`labels.parquet` + reverts the clone; (7) works under `benchmarks/<Dataset>/`; (8) **seeds the
+random baseline** for the new dataset via `submitting-arena-model`.
+Expected: all 8 addressed. Record any that the agent still misses.
 
 ---
 
@@ -290,7 +305,7 @@ needed."
 - [ ] **Step 2: Re-verify (only if you changed the skill)**
 
 Re-run Task 4 Step 1 with the updated skill; confirm the previously-missed items are now handled.
-Expected: all 7 addressed.
+Expected: all 8 addressed.
 
 ---
 
@@ -332,9 +347,10 @@ Expected: files committed, or a clear report that the skills dir is untracked.
 ## Self-review notes
 
 - Spec coverage: location/files (Tasks 2–3), one gate + autonomous pipeline (SKILL.md body),
-  whole-set probe / sorted reads / streaming sanity / arxiv-DOI / stale-shard / Core-coverage /
-  symlink / revert-clone pitfalls (SKILL.md table + Task 1 baseline targets), `benchmarks/<Dataset>/`
-  working dir (SKILL.md "After approval"), two-half template (Task 3) — all present.
+  whole-set probe / sorted reads / streaming sanity / arxiv-DOI / stale-shard / **Core-by-default** /
+  symlink / revert-clone / **random-baseline seeding** pitfalls (SKILL.md table + Task 1 baseline
+  targets), `benchmarks/<Dataset>/` working dir (SKILL.md "After approval"), two-half template
+  (Task 3) — all present.
 - Skill-TDD honored: RED baseline (Task 1) precedes writing (Task 2); GREEN verify (Task 4);
   REFACTOR (Task 5).
 - No placeholders: full file bodies inline; `<...>` tokens appear only inside the plan-*template*

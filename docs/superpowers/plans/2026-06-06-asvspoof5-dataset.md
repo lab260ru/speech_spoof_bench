@@ -300,6 +300,14 @@ def build():
     print(f"  bonafide={bona} spoof={spoof} total={len(records)}")
 
     PARQUET_DIR.mkdir(parents=True, exist_ok=True)
+    # Remove any leftover shards whose total-count suffix doesn't match this run
+    # (e.g. a `-of-00001` sample shard before a `-of-00200` full build). Otherwise
+    # _verify would count them and the row total / shard count would be wrong.
+    keep_suffix = f"-of-{num_shards:05d}.parquet"
+    for stale in PARQUET_DIR.glob("test-*.parquet"):
+        if not stale.name.endswith(keep_suffix):
+            print(f"Removing stale shard {stale.name}")
+            stale.unlink()
     shards = _partition(records, num_shards)
     tasks = [(i, rows, num_shards) for i, rows in enumerate(shards)]
     stage_workers = min(WORKERS, len(tasks))
@@ -532,10 +540,11 @@ speech-spoof-bench validate-dataset ./ASVspoof5 --skip-submissions
 ```
 Expected: D1–D7 all green (PASS). If any check is red, fix the relevant file and re-run before proceeding.
 
-- [ ] **Step 3: Remove the sample shard (the full build writes 200 shards)**
+- [ ] **Step 3: (optional) Remove the sample shard**
 
+The full build auto-removes any stale-suffix shard (`-of-00001`) before building, so this is just hygiene:
 Run: `rm -f /home/kirill/speech-spoof-bench/benchmarks/ASVspoof5/data/test-00000-of-00001.parquet`
-Expected: sample shard gone (so its `*-of-00001` name can't collide with the `*-of-00200` full build).
+Expected: sample shard gone.
 
 ---
 

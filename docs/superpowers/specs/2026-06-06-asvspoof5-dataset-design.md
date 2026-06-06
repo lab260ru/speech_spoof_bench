@@ -16,9 +16,12 @@ skill (separate follow-up task — see "Skill follow-up").
   Labels: **138,688 bonafide / 542,086 spoof**.
 - `track_2.*` (SASV enroll/trial) — **out of scope** (different task, not bonafide/spoof binary).
 
-**Probe finding (decisive):** source FLAC is already **16 kHz mono**, clips **4–10 s**,
-**0/30 soundfile decode failures** → take the **CLEAN path: embed raw source bytes
-directly** (no decode/re-encode). This is the fast branch; 2021_LA's re-encode stage is skipped.
+**Probe finding (decisive, full-set verified):** source FLAC is already **16 kHz mono**,
+clips **4–10 s**. A **full decode probe of all 680,774 protocol clips** with soundfile
+(the exact decoder HF `datasets`/validator/models use) gave **0 failures** → take the
+**CLEAN path: embed raw source bytes directly** (no decode/re-encode). This is the fast
+branch; 2021_LA's re-encode stage is skipped entirely. (Probe: 64 workers, sorted order,
+1914.7 s.)
 
 ## Decisions (locked with user)
 
@@ -71,12 +74,20 @@ Forked from `benchmarks/ASVspoof2021_LA/build_parquet.py`, simplified:
 - At end of full build: `speech_spoof_bench.labels.emit_labels()` → `data/labels.parquet`.
 - **Writes only under `benchmarks/ASVspoof5/`. Source is never written.**
 
-## Fastest-params benchmarking (explicit user ask)
+## Fastest-params benchmarking (explicit user ask) — RESOLVED
 
-Before the full run, time a 2-shard slice at a few worker counts (e.g. 8 / 16 / 32 and
-`os.cpu_count()`) to find the 4 TB mount's read-throughput sweet spot, then launch the full
-build (in the background) with the winning `WORKERS` and a shard count targeting ~300 MB/shard
-(≈40 GB total ⇒ ~130 shards; exact count fixed after a size probe). Report timing + final size.
+Measured on the source mount (`/dev/sdc`, **spinning HDD**, ext4, 88-core / 107 GB-RAM box):
+
+- Cold **random** reads are **seek-bound and flat at ~65 files/s** from 32→256 workers —
+  more parallelism does not help.
+- Cold reads in **sorted filename order** hit **~440 files/s (7×)** because files are laid
+  out by name on the platter → near-sequential. **This is the dominant lever.**
+- Sweet spot: **64 workers, sorted-uid read order.** Full pass ≈ 26–32 min.
+- 40 GB of audio fits in 93 GB free RAM, so the build reads warm after the probe (page cache).
+
+Build implication: process records **sorted by `utterance_id`** (the builder already sorts),
+which gives both fast reads and stable sharding. Shard count targets ~300 MB/shard
+(≈40 GB ⇒ ~130 shards; exact count fixed after a size probe). `WORKERS=64`.
 
 ## Validate → push → manifest
 

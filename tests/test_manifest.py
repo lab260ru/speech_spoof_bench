@@ -41,6 +41,15 @@ def test_load_manifest_accepts_valid(tmp_path):
     assert out["schema_version"] == 1
 
 
+def test_load_manifest_accepts_optional_dataset_fields(tmp_path):
+    import copy
+    ok = copy.deepcopy(VALID)
+    ok["core_set"][0].update({"n_trials": 680774, "paper_url": "https://arxiv.org/abs/2408.08739"})
+    out = mf.load_manifest(_write(tmp_path, ok))
+    assert out["core_set"][0]["n_trials"] == 680774
+    assert out["core_set"][0]["paper_url"].endswith("2408.08739")
+
+
 @pytest.mark.parametrize("mutator,reason", [
     (lambda d: d.pop("tiers"), "missing tiers"),
     (lambda d: d.pop("core_set"), "missing core_set"),
@@ -48,6 +57,9 @@ def test_load_manifest_accepts_valid(tmp_path):
     (lambda d: d["core_set"].clear(), "empty core_set"),
     (lambda d: d["core_set"][0].update({"revision": "not-hex"}), "bad revision"),
     (lambda d: d["core_set"][0].update({"id": "no-slash"}), "bad id"),
+    (lambda d: d["core_set"][0].update({"n_trials": 0}), "n_trials below minimum"),
+    (lambda d: d["core_set"][0].update({"n_trials": 1.5}), "n_trials not integer"),
+    (lambda d: d["core_set"][0].update({"unknown_field": 1}), "unknown dataset field"),
     (lambda d: d["tiers"][0].update({"min_coverage": 1.5}), "min_coverage > 1"),
     (lambda d: d.update({"schema_version": 2}), "wrong schema_version"),
     (lambda d: d["metrics_in_use"].clear(), "empty metrics"),

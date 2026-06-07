@@ -59,7 +59,9 @@
       "required": ["id", "revision"],
       "properties": {
         "id": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
-        "revision": {"type": "string", "pattern": "^[a-f0-9]{7,40}$"}
+        "revision": {"type": "string", "pattern": "^[a-f0-9]{7,40}$"},
+        "n_trials": {"type": "integer", "minimum": 1},
+        "paper_url": {"type": "string", "minLength": 1}
       }
     }
   }

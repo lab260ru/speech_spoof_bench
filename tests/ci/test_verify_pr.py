@@ -100,3 +100,28 @@ def test_run_with_zero_changed_submissions_exits_zero(monkeypatch):
     rc = verify_pr.run(repo="Org/Foo", pr=2, branch="refs/pr/2", api=api, gh_run_url="x")
     assert rc == 0
     assert posted and "no submission changes" in posted[0]
+
+
+def test_changed_submissions_detects_modified_file(monkeypatch, tmp_path):
+    """A submission present on BOTH main and branch but with different content
+    must be detected (not only added files)."""
+    api = MagicMock()
+    api.list_repo_tree.return_value = _tree("submissions/sys.yaml")  # on main AND branch
+    main_f = tmp_path / "main.yaml"; main_f.write_text("eer: 24.85\n")
+    branch_f = tmp_path / "branch.yaml"; branch_f.write_text("eer: 0.48\n")
+
+    def fake_dl(repo, filename, revision, repo_type):
+        return str(branch_f if revision != "main" else main_f)
+
+    monkeypatch.setattr(verify_pr, "_download_at_revision", fake_dl)
+    changed = verify_pr._changed_submissions(api, "Org/Foo", "refs/pr/2")
+    assert changed == ["submissions/sys.yaml"]
+
+
+def test_changed_submissions_ignores_identical_file(monkeypatch, tmp_path):
+    """Same content on main and branch → not a change."""
+    api = MagicMock()
+    api.list_repo_tree.return_value = _tree("submissions/sys.yaml")
+    same = tmp_path / "same.yaml"; same.write_text("eer: 0.48\n")
+    monkeypatch.setattr(verify_pr, "_download_at_revision", lambda *a, **k: str(same))
+    assert verify_pr._changed_submissions(api, "Org/Foo", "refs/pr/2") == []

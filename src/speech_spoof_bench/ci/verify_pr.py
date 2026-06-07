@@ -82,18 +82,22 @@ def _changed_submissions(api: HfApi, repo: str, branch: str) -> list[str]:
         if f.startswith("submissions/") and f.endswith(".yaml")
         and f.rsplit("/", 1)[-1] not in {"README.md", "results_template.yaml"}
     }
-    # For added files: not on main. For modified: we can't cheaply diff content
-    # via list_repo_files; treat any submission present on the branch and not
-    # on main as added, and run the check on all submissions on the branch
-    # (over-inclusive but safe; cost is bounded by the number of changed YAMLs).
+    # Added files: present on the branch, absent on main.
     added = candidates - main_files
-    if added:
-        return sorted(added)
-    # Fall back: also include any file in candidates whose content differs.
-    # For simplicity (and to keep network calls bounded), we treat the absence
-    # of additions as "no submission changes" — modifications without additions
-    # are rare in this workflow.
-    return []
+    # Modified files: present on both, but with different content. Updating an
+    # existing submission (e.g. re-pinning a corrected score after a dataset fix)
+    # must verify too, so content-diff the intersection. Bounded by the number of
+    # submission YAMLs (a handful), each a tiny file.
+    modified = set()
+    for f in sorted(candidates & main_files):
+        try:
+            branch_bytes = Path(_download_at_revision(repo, f, branch, "dataset")).read_bytes()
+            main_bytes = Path(_download_at_revision(repo, f, "main", "dataset")).read_bytes()
+            if branch_bytes != main_bytes:
+                modified.add(f)
+        except Exception:  # noqa: BLE001 — if either side won't fetch, skip (treated as unchanged)
+            continue
+    return sorted(added | modified)
 
 
 def _verdict_for(api: HfApi, repo: str, branch: str, path: str) -> Verdict:

@@ -80,6 +80,7 @@ score(s) = Σ_d ( base_d(γ) · manual_d · value(s,d) )  /  Σ_d ( base_d(γ) �
 
   base_d(γ) = (n_trials_d)^γ / max_over_core( (n_trials)^γ )
   value(s,d) = the metric on dataset d, or `absence_penalty` if s wasn't tested on d
+               (pooled view only — see below)
   manual_d  = optional per-dataset weight from manifest.ranking.weights (default 1.0)
 ```
 
@@ -93,10 +94,13 @@ The **γ (gamma) dial** controls how much test-set size matters:
 The manifest provides both `gamma_aggregated` (default `0.0`) and `gamma_pooled`
 (default `1.0`); the UI's view toggle picks which one to use.
 
-The **absence penalty** (default `50.0` for EER) substitutes for datasets a system didn't
-run — so partial coverage hurts your mean, nudging contributors to cover the whole Core
-set. (If a metric has *no* known penalty, absent datasets are dropped from both numerator
-and denominator instead.)
+The **absence penalty** (default `50.0` for EER) applies **in the pooled view only**.
+There, a Core dataset a system never ran substitutes the penalty (≈ chance-level EER),
+so skipping a dataset — especially a large one — hurts the size-weighted mean and nudges
+contributors to cover the whole Core set. In the **aggregated view the penalty does not
+apply**: absent datasets are simply excluded from the macro-average, so the score reflects
+only the datasets a system actually ran (coverage is instead conveyed by the tier). (If a
+metric has *no* known penalty, absent datasets are dropped in both views.)
 
 ### Board rank — `global_rank(rows, manifest, view)`
 Sorts systems by `global_scores` in the metric's direction (`lower_is_better` from the
@@ -104,17 +108,23 @@ metric registry; unknown metrics assume `True`), ties broken by slug. Returns
 `{slug: {place, out_of}}`.
 
 **Paper-gating:** if *any* tier has `requires_paper: true`, `global_rank` first filters
-to systems that have a paper. Paperless systems get **no rank at all** — their tier table
-shows no Rank column (`tier_ranks = {}`). So never assume every row has a `place`.
+to systems that have a paper, so paperless systems get **no board-wide rank**. They are
+not left unranked in the UI, though: `app._tier_local_ranks` assigns the unpublished /
+proprietary tier its own 1..N ranking among its members (by the same view-weighted score),
+so that table is ranked and sorted within itself — it just doesn't share the board-wide
+sequence. `global_rank` still returns only papered systems, so never assume every row has
+a board `place`.
 
 ### Worked micro-example
-3 Core datasets, γ=0 (aggregated):
+3 Core datasets:
 
 - System A tested on 3/3 → coverage 1.0 → **gold** (has paper).
-- System B tested on 2/3 → coverage 0.67 → **silver** (has paper). Its mean includes one
-  `absence_penalty=50.0` term, so it ranks below A.
+- System B tested on 2/3 → coverage 0.67 → **silver** (has paper). In the **aggregated**
+  view its score is the plain mean of its 2 datasets (no penalty); in the **pooled** view
+  the missing 3rd dataset contributes an `absence_penalty=50.0` term weighted by that
+  dataset's `n_trials`, which can drop B well below A.
 - System D tested on 1/3, **no paper** → skips gold/silver/bronze (all `requires_paper`)
-  → **unpublished**, unranked.
+  → **unpublished** (now ranked *within* that tier — see `_tier_local_ranks` in `app.py`).
 
 ## The UI — `app.py`
 

@@ -190,3 +190,106 @@ Three ways to close that gap, in increasing automation:
 **Recommendation:** keep option 1 for this effort; if the project later wants new models to
 appear hands-off, implement option 2 (auto-stamp in post-merge) with the loop guard. No
 Arena ranking-code change is needed for either.
+
+## Addendum 2 (2026-05-31): implementing auto-stamp in the post-merge workflow (option 2)
+
+We are now implementing option 2. Goal: after a submission PR is merged, the post-merge
+job fills the `reproduction:` block on `main` automatically, so the model appears on the
+Arena hands-off — no human edit between merge and appearance. The maintainer's **merge
+click stays the human checkpoint**; the stamp only transcribes a result CI already proved.
+
+### Trust model (decided)
+
+Post-merge does **not** re-run `reproduce --scoring`. It **trusts the pre-merge
+`verify-hf-pr` result** and stamps directly. Re-running would re-download labels and
+duplicate work the PR already gated on. To avoid stamping a PR that failed verification
+but was merged anyway, stamping is **gated on finding our own passing verify-pr comment**
+(below).
+
+### Component A1 — the verify-pr gate (no `verify_pr.py` change)
+
+Before stamping a path, scan the HF discussion for **our** verify-pr verdict comment and
+require it to indicate success for this submission. No machine sentinel is added to
+`verify_pr.py`; we read the existing Markdown it already posts. A comment qualifies when
+its body contains all of:
+
+- the workflow marker `**speech-spoof-bench ci verify-pr**` (proves it is our comment, not
+  a human's),
+- the overall pass line `✅ all checks passed`, and
+- this submission's path (e.g. `` `submissions/res2tcnguard.yaml` ``) — the table always
+  includes it.
+
+The discussion is already fetched in the badge path (`get_discussion_details`), so this is
+the same one call. If no qualifying comment is found → **skip stamping** (log it). Option 1
+(manual stamp) remains available as the fallback. If multiple verify-pr comments exist
+(re-runs), the **most recent** one for this path decides.
+
+### Component A2 — the stamp operation (`_stamp_reproduction` in `post_merge_badge.py`)
+
+Folded into the existing per-path loop of `post_merge_badge.run()` (Approach A — no new
+CLI command, no workflow-inputs change). Per newly-added `submissions/<slug>.yaml`
+(the normal case is exactly one file → one iteration):
+
+1. Re-read the YAML at the merge `sha`. If `reproduction.match` is **already set** → skip
+   (explicit loop guard #3).
+2. Confirm the verify-pr gate (A1) passes for this path. Else skip.
+3. Build the **complete** block (schema is `oneOf` `{}` | fully-populated — partial fails):
+   - `reproduced_by`: `HfApi(token).whoami()["name"]` (the bot's real identity), fallback
+     constant `"ssb-ci-bot"`.
+   - `reproduced_at`: today, UTC, `YYYY-MM-DD` (a `date`-format string).
+   - `reproduced_bench_version`: `f"speech-spoof-bench=={__version__}"` (the package
+     version installed in the CI env — matches the `bench_version` string format).
+   - `match`: `"scoring"`.
+4. Commit back via `HfApi.upload_file(path_or_fileobj=<bytes>, path_in_repo=path,
+   repo_id=repo, repo_type="dataset", revision="main",
+   commit_message="ci: auto-stamp reproduction for <path>")` — **no `(#N)` suffix**
+   (loop guard #2).
+
+Badge posting is unchanged and runs in the same loop; stamp failures are logged per-path
+and counted into the existing non-zero exit, but never abort the badge.
+
+### Component A3 — YAML fidelity (`ruamel.yaml`, ci extra)
+
+`pyyaml.safe_dump` reorders keys and strips the template's guiding comments. To keep the
+on-repo submission file a **minimal diff** (only the `reproduction:` block changes), use
+`ruamel.yaml` round-trip: load with preserved order/comments, replace `data["reproduction"]`
+with the populated block, dump. ruamel also preserves date scalars as written (no
+`datetime.date` coercion on the way out).
+
+- Add `ruamel.yaml` to a new `[project.optional-dependencies] ci` extra in `pyproject.toml`.
+- Switch **both** `verify-hf-pr.yml` and `post-merge-badge.yml` from `pip install -e .` to
+  `pip install -e ".[ci]"`.
+
+### Loop safety — three independent guards (any one suffices)
+
+The stamp commits to `main`, which re-fires the HF webhook. The loop terminates because:
+
+1. **Modified-not-added.** `_changed_submissions` diffs the new commit against its parent
+   and returns only **added** files; the stamp commit *modifies* an existing file →
+   empty set → post-merge no-ops.
+2. **No `(#N)` suffix.** The stamp commit message omits `(#N)`, so
+   `_pr_num_from_merge_commit` returns `None` → the webhook schedules only a `refresh`,
+   not a post-merge dispatch. (That refresh is *desirable* — it re-ingests and surfaces
+   the now-stamped model.)
+3. **`reproduction.match` already set.** Even if A1/A2 were reached again, step A2.1 skips.
+
+### Preconditions / risks
+
+- **Token scope.** `HF_BOT_TOKEN` must have **write** on the dataset repos (it currently
+  comments on discussions; committing to `main` needs write). Verify before rollout; a
+  read-only token would fail at `upload_file`.
+- **Exact-keys block (confirmed from `submission.schema.json`).** The populated branch is
+  `additionalProperties: false`, `required: [reproduced_by, reproduced_at,
+  reproduced_bench_version, match]`, with `match` enum `["scoring", "inference"]` and
+  `reproduced_at` `format: date`. The stamp must write **exactly** those four keys (no
+  extras) with `match: "scoring"`, or the next ingest re-filters it. Replacing the whole
+  `reproduction` value (not merging into the existing `{}`) guarantees no stray keys.
+- **Doc sync.** Update `docs/architecture/cicd.md` (post-merge-badge now also stamps; new
+  `ci` extra; token write-scope row) and note the new behavior in `submission-lifecycle.md`
+  (`reproduction` can now be filled by CI, not only a human).
+
+### What is explicitly out of scope
+
+- No change to `ingest.py` (the trust filter stays — we satisfy it, not relax it).
+- No re-run of `reproduce --scoring` post-merge.
+- No new GitHub workflow file or new `ci` subcommand.

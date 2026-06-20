@@ -7,6 +7,7 @@ bundled JSON Schema, and exposes a few small accessors.
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 from importlib import resources
 from pathlib import Path
@@ -29,8 +30,26 @@ def _load_schema() -> dict[str, Any]:
         return json.load(f)
 
 
+def _coerce_dates(obj: Any) -> Any:
+    """Recursively turn datetime.date/datetime into ISO strings.
+
+    PyYAML auto-parses a hand-edited unquoted ``saturated_at: 2026-06-20`` into a
+    ``datetime.date`` object, which fails the schema's ``type: string`` check;
+    coercing it to an ISO string makes it validate. (``format: date`` is
+    annotation-only — no format checker is registered.) Mirrors
+    submission._coerce_dates."""
+    if isinstance(obj, _dt.date):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _coerce_dates(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_coerce_dates(v) for v in obj]
+    return obj
+
+
 def _parse_and_validate(text: str) -> dict[str, Any]:
     data = yaml.safe_load(text)
+    data = _coerce_dates(data)
     validate(instance=data, schema=_load_schema())
     return data
 

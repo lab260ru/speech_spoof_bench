@@ -1,11 +1,11 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "speech-spoof-bench submission (v4)",
+  "title": "speech-spoof-bench submission (v5)",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "system", "dataset", "scores", "artifact", "submitter", "submitted_at"],
   "properties": {
-    "schema_version": {"type": "integer", "const": 4},
+    "schema_version": {"type": "integer", "enum": [4, 5]},
     "system": {
       "type": "object",
       "additionalProperties": false,
@@ -26,7 +26,11 @@
             "bibtex": {"type": "string", "minLength": 1}
           }
         },
-        "params_millions": {"type": "number", "minimum": 0}
+        "params_millions": {"type": "number", "minimum": 0},
+        "trained_on": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"}
+        }
       }
     },
     "dataset": {
@@ -75,7 +79,7 @@
             "reproduced_by": {"type": "string", "minLength": 1},
             "reproduced_at": {"type": "string", "format": "date"},
             "reproduced_bench_version": {"type": "string", "minLength": 1},
-            "match": {"enum": ["scoring", "inference"]}
+            "match": {"enum": ["scoring", "inference", "organizer", "closed-eval"]}
           }
         }
       ]
@@ -90,6 +94,15 @@
       }
     },
     "submitted_at": {"type": "string", "format": "date"},
-    "notes": {"type": "string"}
+    "notes": {"type": "string"},
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_dataset", "threshold"],
+      "properties": {
+        "source_dataset": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
+        "threshold": {"type": "number"}
+      }
+    }
   }
 }

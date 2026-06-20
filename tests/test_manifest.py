@@ -13,7 +13,7 @@ from speech_spoof_bench import manifest as mf
 
 VALID = {
     "ranking_version": "v1",
-    "schema_version": 1,
+    "schema_version": 2,
     "metrics_in_use": ["eer_percent"],
     "tiers": [
         {"name": "gold", "min_coverage": 1.0},
@@ -38,7 +38,7 @@ def _write(tmp_path: Path, data: dict) -> Path:
 def test_load_manifest_accepts_valid(tmp_path):
     out = mf.load_manifest(_write(tmp_path, VALID))
     assert out["ranking_version"] == "v1"
-    assert out["schema_version"] == 1
+    assert out["schema_version"] == 2
 
 
 def test_load_manifest_accepts_optional_dataset_fields(tmp_path):
@@ -48,6 +48,20 @@ def test_load_manifest_accepts_optional_dataset_fields(tmp_path):
     out = mf.load_manifest(_write(tmp_path, ok))
     assert out["core_set"][0]["n_trials"] == 680774
     assert out["core_set"][0]["paper_url"].endswith("2408.08739")
+
+
+def test_load_manifest_coerces_saturated_at_date(tmp_path):
+    # A hand-edited `saturated_at: 2026-06-20` is parsed by PyYAML as a date
+    # object; the loader must coerce it to an ISO string so it satisfies the
+    # schema's `type: string` check (jsonschema `format` is not enforced by
+    # default). Mirrors submission._coerce_dates.
+    import copy
+    import datetime
+    ok = copy.deepcopy(VALID)
+    ok["core_set"][0].update({"status": "saturated", "saturated_at": datetime.date(2026, 6, 20)})
+    out = mf.load_manifest(_write(tmp_path, ok))
+    assert out["core_set"][0]["status"] == "saturated"
+    assert out["core_set"][0]["saturated_at"] == "2026-06-20"
 
 
 @pytest.mark.parametrize("mutator,reason", [
@@ -61,7 +75,7 @@ def test_load_manifest_accepts_optional_dataset_fields(tmp_path):
     (lambda d: d["core_set"][0].update({"n_trials": 1.5}), "n_trials not integer"),
     (lambda d: d["core_set"][0].update({"unknown_field": 1}), "unknown dataset field"),
     (lambda d: d["tiers"][0].update({"min_coverage": 1.5}), "min_coverage > 1"),
-    (lambda d: d.update({"schema_version": 2}), "wrong schema_version"),
+    (lambda d: d.update({"schema_version": 1}), "wrong schema_version (1 is now old)"),
     (lambda d: d["metrics_in_use"].clear(), "empty metrics"),
 ])
 def test_load_manifest_rejects_invalid(tmp_path, mutator, reason):

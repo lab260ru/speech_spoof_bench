@@ -1,3 +1,3 @@
 """speech-spoof-bench — anti-spoofing benchmark harness."""
 
-__version__ = "0.3.6"
+__version__ = "0.4.0"

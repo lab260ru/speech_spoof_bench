@@ -11,8 +11,9 @@ from speech_spoof_bench.cli import main
 FIX = Path(__file__).parent / "fixtures" / "submissions"
 
 
-def test_valid(capsys):
-    rc = main(["validate-submission", str(FIX / "valid.yaml")])
+@pytest.mark.parametrize("name", ["valid.yaml", "valid_v5.yaml"])
+def test_valid(name, capsys):
+    rc = main(["validate-submission", str(FIX / name)])
     assert rc == 0
     assert "OK" in capsys.readouterr().out
 

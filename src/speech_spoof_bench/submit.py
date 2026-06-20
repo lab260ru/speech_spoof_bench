@@ -177,8 +177,26 @@ def _resolve_dataset_slug(
     from .loader import resolve as _resolve
 
     source, _ = _resolve(spec, streaming=True, force_remote=force_remote)
-    info = api.repo_info(repo_id=source.canonical_id, repo_type="dataset")
-    return source.canonical_id, source.slug, info.sha, source.split
+    canonical = source.canonical_id
+    if "/" not in canonical:
+        # A bare local-dir spec resolves to the directory basename (org prefix
+        # dropped), so repo_info(basename) would 404. Recover the canonical org/name
+        # from the local registry; if it isn't registered, fail with an actionable
+        # message instead of an opaque RepositoryNotFoundError.
+        from . import local_registry
+
+        recovered = local_registry.canonical_for_path(spec)
+        if recovered:
+            canonical = recovered
+        else:
+            raise ValueError(
+                f"{spec!r} is not a registered local dataset and is not in org/name "
+                f"form, so its Hugging Face id can't be resolved. Pass the dataset as "
+                f"its HF id (e.g. SpeechAntiSpoofingBenchmarks/<Name>), or register it "
+                f"first with `speech-spoof-bench local set <org/name> <path>`."
+            )
+    info = api.repo_info(repo_id=canonical, repo_type="dataset")
+    return canonical, source.slug, info.sha, source.split
 
 
 def _run_benchmark(

@@ -97,3 +97,18 @@ def lookup(dataset_id: str) -> Optional[Path]:
             f"(`speech-spoof-bench local unset {dataset_id}`)."
         )
     return p
+
+
+def canonical_for_path(path: Path | str) -> Optional[str]:
+    """Inverse of ``lookup``: return the dataset id (``org/name``) registered for a
+    local directory, or None if no registration maps to it.
+
+    Lets ``submit`` recover the canonical HF id when a dataset is passed as a bare
+    local path, so ``repo_info`` is called with ``org/name`` instead of the directory
+    basename (which would 404).
+    """
+    target = Path(path).expanduser().resolve()
+    for dataset_id, p in load().items():
+        if Path(p).expanduser().resolve() == target:
+            return dataset_id
+    return None

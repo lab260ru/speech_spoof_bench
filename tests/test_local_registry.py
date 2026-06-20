@@ -100,3 +100,14 @@ def test_yaml_uses_list_schema(reg_path, dataset_dir):
         "schema_version": 1,
         "datasets": [{"id": "Org/Foo", "path": str(dataset_dir)}],
     }
+
+
+def test_canonical_for_path_roundtrips(reg_path, dataset_dir):
+    lr.set("Org/Foo", dataset_dir)
+    assert lr.canonical_for_path(dataset_dir) == "Org/Foo"
+    assert lr.canonical_for_path(str(dataset_dir)) == "Org/Foo"
+
+
+def test_canonical_for_path_unknown_returns_none(reg_path, dataset_dir, tmp_path):
+    lr.set("Org/Foo", dataset_dir)
+    assert lr.canonical_for_path(tmp_path / "not-registered") is None

@@ -1,6 +1,7 @@
 """Happy path: one new submission YAML in the merge sha → one comment posted."""
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from speech_spoof_bench.ci import post_merge_badge
@@ -31,19 +32,19 @@ def _commit(cid):
 def make_api(*, sha, parent, sha_files, parent_files, events=None):
     """Build a mock HfApi modelling the sha-vs-parent diff path.
 
-    list_repo_files responds by `revision` kwarg; list_repo_commits returns
-    [<sha>, <parent>] newest-first so `_parent_sha` resolves correctly.
+    The listing is scoped to ``submissions/`` via ``list_repo_tree`` (which
+    returns objects carrying a ``.path``), responding by ``revision`` kwarg;
+    ``list_repo_commits`` returns [<sha>, <parent>] newest-first so
+    ``_parent_sha`` resolves correctly. A full-repo ``list_repo_files`` must
+    never be called (it paginates every parquet shard — a 429 trigger).
     """
     api = MagicMock()
 
-    def files(repo_id, revision=None, repo_type=None):
-        if revision == sha:
-            return list(sha_files)
-        if revision == parent:
-            return list(parent_files)
-        return list(parent_files)  # default = current main == parent here
+    def tree(repo_id, path_in_repo=None, recursive=None, revision=None, repo_type=None):
+        files = sha_files if revision == sha else parent_files
+        return [SimpleNamespace(path=p) for p in files]
 
-    api.list_repo_files.side_effect = files
+    api.list_repo_tree.side_effect = tree
     api.list_repo_commits.return_value = [_commit(sha), _commit(parent)]
     api.get_discussion_details.return_value = MagicMock(events=events or [])
     return api
@@ -81,6 +82,11 @@ def test_one_new_submission_posts_one_comment(monkeypatch, tmp_path):
     assert repo == "Org/ASVspoof2019_LA" and pr == 42
     assert "speech-spoof-bench" in body and "submission merged" in body
     assert "<!-- ssb:badge --> sha=deadbeefcafe1234 path=submissions/aasist.yaml" in body
+    # The change detection must list only the submissions/ subtree, never the
+    # full repo tree (which paginates every parquet shard → a 429 trigger).
+    api.list_repo_files.assert_not_called()
+    for _, kwargs in api.list_repo_tree.call_args_list:
+        assert kwargs.get("path_in_repo") == "submissions"
 
 
 def test_post_merge_comment_includes_tier_and_rank_badges(monkeypatch, tmp_path):

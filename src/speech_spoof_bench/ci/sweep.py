@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
+import time
 import urllib.error
 import urllib.request
 
@@ -31,6 +33,55 @@ logger = logging.getLogger(__name__)
 _VERDICT_MARKER = "speech-spoof-bench ci verify-pr"
 _GH_API = "https://api.github.com"
 _DEFAULT_TARGET = "lab260ru/speech_spoof_bench"
+
+# GitHub workflow_dispatch retry policy. The dispatch POST can hit GitHub's
+# secondary rate limit (429, sometimes 403+Retry-After) or a transient 5xx
+# during a merge burst; bounded retry lets it self-heal within the run instead
+# of dropping the PR for a whole 15-min sweep cycle.
+_DISPATCH_ATTEMPTS = 5
+_DISPATCH_BASE = 2.0
+_DISPATCH_CAP = 60.0
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _sleep(seconds: float) -> None:  # indirection so tests run instantly
+    time.sleep(seconds)
+
+
+def _retry_after(exc: urllib.error.HTTPError) -> float | None:
+    headers = getattr(exc, "headers", None)
+    if not headers:
+        return None
+    raw = headers.get("Retry-After")
+    try:
+        return float(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _http_error_retryable(exc: urllib.error.HTTPError) -> bool:
+    code = getattr(exc, "code", None)
+    if code in _RETRYABLE_STATUS:
+        return True
+    # GitHub's secondary rate limit can surface as a 403 carrying Retry-After.
+    # A *bare* 403 is an auth/permission failure — retrying it just wastes time.
+    return code == 403 and _retry_after(exc) is not None
+
+
+def _backoff_delay(attempt: int, retry_after: float | None) -> float:
+    if retry_after is not None:
+        # Clamp: a malformed/negative Retry-After must never become a negative
+        # sleep (time.sleep(<0) raises ValueError and would crash the sweep).
+        return max(0.0, min(_DISPATCH_CAP, retry_after))
+    ceil = min(_DISPATCH_CAP, _DISPATCH_BASE * (2 ** attempt))
+    return ceil / 2 + random.random() * (ceil / 2)  # equal jitter
+
+
+def _err_body(exc: urllib.error.HTTPError) -> bytes:
+    try:
+        return exc.read()[:200]
+    except Exception:  # noqa: BLE001 — body is best-effort logging only
+        return b""
 
 
 def _open_pr_nums(api: HfApi, repo: str) -> list[int]:
@@ -83,16 +134,30 @@ def _dispatch_verify_workflow(repo: str, pr_num: int) -> bool:
             "User-Agent": "ssb-sweep",
         },
     )
-    try:
-        urllib.request.urlopen(req, timeout=10)
-        return True
-    except urllib.error.HTTPError as exc:  # noqa: PERF203
-        logger.warning("verify-pr dispatch failed for %s#%d: %s %s",
-                       repo, pr_num, exc.code, exc.read()[:200])
-        return False
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("verify-pr dispatch error for %s#%d: %s", repo, pr_num, exc)
-        return False
+    for attempt in range(_DISPATCH_ATTEMPTS):
+        last = attempt == _DISPATCH_ATTEMPTS - 1
+        try:
+            urllib.request.urlopen(req, timeout=10)
+            return True
+        except urllib.error.HTTPError as exc:  # noqa: PERF203 — HTTPError is a URLError subclass; catch first
+            if not _http_error_retryable(exc) or last:
+                logger.warning("verify-pr dispatch failed for %s#%d: %s %s",
+                               repo, pr_num, exc.code, _err_body(exc))
+                return False
+            delay = _backoff_delay(attempt, _retry_after(exc))
+            logger.info("verify-pr dispatch %s#%d got %s (attempt %d/%d); retrying in %.1fs",
+                        repo, pr_num, exc.code, attempt + 1, _DISPATCH_ATTEMPTS, delay)
+            _sleep(delay)
+        except urllib.error.URLError as exc:
+            # Transient transport failure (DNS, reset, timeout) — retry.
+            if last:
+                logger.warning("verify-pr dispatch error for %s#%d: %s", repo, pr_num, exc)
+                return False
+            _sleep(_backoff_delay(attempt, None))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("verify-pr dispatch error for %s#%d: %s", repo, pr_num, exc)
+            return False
+    return False  # pragma: no cover — loop exits via return above
 
 
 def run(

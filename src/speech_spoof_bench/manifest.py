@@ -16,6 +16,8 @@ import yaml
 from huggingface_hub import hf_hub_download
 from jsonschema import validate
 
+from .ci._hf_retry import retry_on_429
+
 MANIFEST_REPO = "SpeechAntiSpoofingBenchmarks/arena-manifest"
 MANIFEST_FILENAME = "manifest.yaml"
 SCHEMA_PACKAGE = "speech_spoof_bench.schema"
@@ -38,16 +40,33 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     return _parse_and_validate(Path(path).read_text())
 
 
-def fetch_manifest() -> dict[str, Any]:
+def fetch_manifest(*, retry: bool = True) -> dict[str, Any]:
     """Download manifest.yaml from HF, parse, validate, return dict.
 
-    No auth required (public dataset repo).
+    No auth required (public dataset repo). With ``retry=True`` (default) the
+    download is wrapped in ``retry_on_429`` so a transient HF throttle self-heals
+    instead of crashing every consumer — most importantly the nightly
+    revalidation and the `ci sweep` backstop, both background jobs that can
+    afford to wait.
+
+    ``retry=False`` does a single shot with no backoff: for **request-path**
+    callers that must not block (the Arena webhook's subscription gate runs
+    synchronously inside the async handler — a multi-minute retry budget there
+    re-creates HF's 3-strikes webhook auto-disable).
     """
-    local = hf_hub_download(
-        repo_id=MANIFEST_REPO,
-        repo_type="dataset",
-        filename=MANIFEST_FILENAME,
-    )
+    if retry:
+        local = retry_on_429(
+            hf_hub_download,
+            repo_id=MANIFEST_REPO,
+            repo_type="dataset",
+            filename=MANIFEST_FILENAME,
+        )
+    else:
+        local = hf_hub_download(
+            repo_id=MANIFEST_REPO,
+            repo_type="dataset",
+            filename=MANIFEST_FILENAME,
+        )
     return _parse_and_validate(Path(local).read_text())
 
 

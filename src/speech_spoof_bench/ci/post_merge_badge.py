@@ -42,22 +42,23 @@ def _changed_submissions(api: HfApi, repo: str, sha: str) -> list[str]:
     empty post-merge, since the file is already there. (This is the key
     difference from verify_pr._changed_submissions, which diffs an open PR
     branch against main where the file isn't yet present.)
+
+    Listing is scoped to the ``submissions/`` subtree (via
+    ``submission.list_submission_files`` → ``list_repo_tree``), not a full-repo
+    ``list_repo_files`` that paginates every parquet shard — the same 429-burst
+    fix already proven in verify_pr. The lister already filters to submission
+    YAMLs (drops README/results_template), so its output is the candidate set.
     """
-    sha_files = set(retry_on_429(api.list_repo_files, repo_id=repo, revision=sha, repo_type="dataset"))
-    candidates = {
-        f for f in sha_files
-        if f.startswith("submissions/") and f.endswith(".yaml")
-        and f.rsplit("/", 1)[-1] not in {"README.md", "results_template.yaml"}
-    }
+    sha_files = set(submission.list_submission_files(repo, revision=sha, api=api))
     parent = _parent_sha(api, repo, sha)
     if parent is None:
         # No parent (first commit) — treat every candidate as added.
-        return sorted(candidates)
-    parent_files = set(retry_on_429(api.list_repo_files, repo_id=repo, revision=parent, repo_type="dataset"))
+        return sorted(sha_files)
+    parent_files = set(submission.list_submission_files(repo, revision=parent, api=api))
     # Added by this merge = present at <sha> but not at its parent. Catches
     # added files; amended/corrected re-submissions (content-only edits) are
     # rare and out of scope, same as verify_pr.
-    return sorted(candidates - parent_files)
+    return sorted(sha_files - parent_files)
 
 
 def _primary_metric_at(api: HfApi, repo: str, revision: str) -> str:

@@ -19,6 +19,8 @@ import yaml
 from huggingface_hub import HfApi, hf_hub_download
 from jsonschema import ValidationError, validate
 
+from .ci._hf_retry import retry_on_429
+
 SCHEMA_PACKAGE = "speech_spoof_bench.schema"
 SCHEMA_FILENAME = "submission.schema.json"
 SUBMISSIONS_DIR = "submissions"
@@ -59,15 +61,42 @@ def parse_submission(text: str) -> dict[str, Any]:
     return data
 
 
-def list_submission_files(dataset_id: str, *, api: HfApi | None = None) -> list[str]:
-    """List `submissions/*.yaml` files in a dataset repo at main.
+def list_submission_files(
+    dataset_id: str,
+    *,
+    revision: str | None = None,
+    repo_type: str = "dataset",
+    api: HfApi | None = None,
+) -> list[str]:
+    """List `submissions/*.yaml` files in a dataset repo (at `revision`, or main).
 
     Excludes README.md and results_template.yaml.
+
+    Scoped to the ``submissions/`` subtree via ``list_repo_tree`` rather than a
+    full recursive ``list_repo_files`` of the whole dataset repo: on a dataset
+    repo the full tree includes every parquet data shard, so listing it
+    paginates many pages and is a prime 429 trigger — we only ever need the
+    handful of files under ``submissions/``. Wrapped in ``retry_on_429`` so a
+    transient throttle self-heals instead of crashing the caller (e.g. nightly).
+    Returns [] if the folder doesn't exist yet (e.g. a brand-new dataset).
     """
+    from huggingface_hub.errors import EntryNotFoundError
+
     api = api or HfApi()
-    files = api.list_repo_files(repo_id=dataset_id, repo_type="dataset")
+
+    def _fetch():
+        return list(api.list_repo_tree(
+            repo_id=dataset_id, path_in_repo=SUBMISSIONS_DIR, recursive=True,
+            revision=revision, repo_type=repo_type,
+        ))
+
+    try:
+        entries = retry_on_429(_fetch)
+    except EntryNotFoundError:
+        return []
     out: list[str] = []
-    for f in files:
+    for e in entries:
+        f = getattr(e, "path", e)
         if not f.startswith(SUBMISSIONS_DIR + "/"):
             continue
         if not f.endswith(".yaml"):
@@ -80,6 +109,11 @@ def list_submission_files(dataset_id: str, *, api: HfApi | None = None) -> list[
 
 
 def fetch_submission(dataset_id: str, path: str) -> dict[str, Any]:
-    """Download a submission YAML and parse+validate it."""
-    local = hf_hub_download(repo_id=dataset_id, filename=path, repo_type="dataset")
+    """Download a submission YAML and parse+validate it.
+
+    The download is wrapped in ``retry_on_429`` so a transient HF throttle
+    self-heals instead of failing the caller (e.g. nightly revalidation).
+    """
+    local = retry_on_429(hf_hub_download, repo_id=dataset_id, filename=path,
+                         repo_type="dataset")
     return parse_submission(Path(local).read_text())

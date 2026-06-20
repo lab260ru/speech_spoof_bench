@@ -112,3 +112,52 @@ def test_fetch_manifest_uses_hf_hub(monkeypatch, tmp_path):
         "repo_type": "dataset",
         "filename": "manifest.yaml",
     }
+
+
+def test_fetch_manifest_retries_on_429(monkeypatch, tmp_path):
+    """A transient HF 429 on the manifest fetch self-heals, so a throttle does
+    not crash the whole nightly/sweep run (the residual the follow-up plan
+    flagged: sweep.run()'s fetch_manifest wasn't retry-wrapped)."""
+    import httpx
+    from huggingface_hub.errors import HfHubHTTPError
+
+    fake = _write(tmp_path, VALID)
+    calls = {"n": 0}
+
+    def flaky(*, repo_id, repo_type, filename):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            resp = httpx.Response(429, request=httpx.Request("GET", "https://hf.co/x"))
+            raise HfHubHTTPError("429", response=resp)
+        return str(fake)
+
+    monkeypatch.setattr(mf, "hf_hub_download", flaky)
+    real = mf.retry_on_429  # AttributeError here until manifest imports it
+    monkeypatch.setattr(
+        mf, "retry_on_429",
+        lambda fn, *a, **k: real(fn, *a, _base=0.0, _sleep=lambda s: None, **k),
+    )
+    out = mf.fetch_manifest()
+    assert out["ranking_version"] == "v1"
+    assert calls["n"] == 2
+
+
+def test_fetch_manifest_no_retry_when_disabled(monkeypatch):
+    """retry=False (for request-path callers like the webhook subscription gate)
+    must NOT enter the multi-minute retry budget — it raises the 429 at once.
+    Wrapping fetch_manifest in retry at the source had re-created the webhook
+    3-strikes auto-disable risk when called synchronously in the async handler."""
+    import httpx
+    from huggingface_hub.errors import HfHubHTTPError
+
+    calls = {"n": 0}
+
+    def always_429(*, repo_id, repo_type, filename):
+        calls["n"] += 1
+        resp = httpx.Response(429, request=httpx.Request("GET", "https://hf.co/x"))
+        raise HfHubHTTPError("429", response=resp)
+
+    monkeypatch.setattr(mf, "hf_hub_download", always_429)
+    with pytest.raises(HfHubHTTPError):
+        mf.fetch_manifest(retry=False)
+    assert calls["n"] == 1  # single shot, no retry budget

@@ -3,10 +3,10 @@
 New here? This guide assumes no prior knowledge of the toolkit. By the end you'll have
 your model's result on the Arena leaderboard.
 
-> 💡 **Can't run the full benchmark yourself?** (No GPU, dataset too big, etc.) If you
-> can run your model over the complete dataset(s), email
-> **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)** and we'll consider running it
-> for you.
+> 💡 **Can't run the full benchmark yourself?** (No GPU, dataset too big, etc.) Open a
+> **[submit-for-me issue](https://github.com/lab260ru/speech_spoof_bench/issues/new?template=submit-for-me.yml)**
+> or email **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)**, and we'll consider
+> running your model for you.
 
 ## What you're actually doing
 
@@ -73,18 +73,22 @@ aborts so you notice.
 ## Step 2 — Install the toolkit
 
 ```bash
-pip install speech-spoof-bench
+pip install git+https://github.com/lab260ru/speech_spoof_bench.git
 ```
+
+(It isn't on PyPI yet, so install it straight from GitHub.)
 
 ## Step 3 — Run the benchmark
 
 ```bash
-speech-spoof-bench run --model-module my_model:MyModel --datasets all
+speech-spoof-bench run --model-module my_model:MyModel \
+  --datasets SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
 ```
 
 - `--model-module` is `file_or_import_path:ClassName`.
-- `--datasets all` runs every Core dataset; or pass one id, e.g.
-  `--datasets SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA`.
+- Score more datasets by repeating `--datasets`, e.g. add
+  `--datasets SpeechAntiSpoofingBenchmarks/InTheWild`. (Scoring *every* Core dataset in one
+  command happens at submit time — see `--datasets all` in Step 6.)
 
 The toolkit streams the audio (you don't pre-download the whole dataset), calls your
 model, and writes per dataset:
@@ -113,8 +117,8 @@ huggingface-cli upload your-username/my-model \
   .eval_results/SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA/scores.txt
 ```
 
-(Why your repo? So the leaderboard can link to immutable, sha-pinned scores without
-storing big files itself.)
+(Why your repo? So the leaderboard can point at your scores at one fixed version it can
+re-check, instead of storing big files itself.)
 
 ## Step 5 — Describe your system: `meta.yaml`
 
@@ -162,13 +166,22 @@ speech-spoof-bench submit \
 (A *pull request* is a proposed change a maintainer reviews. You never edit the dataset
 repo directly.)
 
+> **If `submit` errors out or starts re-downloading the whole dataset from scratch** —
+> this can happen when you already have a `scores.txt` from Step 3 — skip `submit` and use
+> the manual two-upload path:
+> [Submitting manually](../developing/new-model.md#submitting-manually-when-submit-would-re-stream).
+> It reuses the scores you already made.
+
 ## Step 7 — What happens next (verification)
 
 A maintainer runs a quick check (`reproduce --scoring`): it downloads your `scores.txt`,
 verifies it's unchanged, and recomputes the EER — it must match your claim. If it does,
-your row is merged with a **✔ scoring** badge. They may also re-run your model
-end-to-end, which upgrades you to **★ inference**. This is usually quick but can take
-longer for the full inference re-run.
+your row is merged with a **✔ scoring** badge — the verification every merged row carries
+today.
+
+A stronger **★ inference** badge (re-running your model end-to-end from its checkpoint) is
+planned, but **full inference re-verification is not yet automated** — so for now every
+verified row shows **✔ scoring**.
 
 ## Step 8 — Add the badge to your model
 

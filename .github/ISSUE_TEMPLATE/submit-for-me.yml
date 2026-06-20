@@ -1,0 +1,74 @@
+name: "Submit-for-me (no GPU)"
+description: "Ask the maintainers to run your anti-spoofing model and put it on the Arena."
+title: "[submit-for-me] <model name>"
+labels: ["submit-for-me"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Can't run the full benchmark yourself — no GPU, the dataset is too large, or the
+        setup is awkward? Fill this in and we'll consider running your model for you and
+        submitting the result on your behalf.
+
+        This issue is the public **`submit-for-me`** queue that maintainers pick from. (The
+        closed-evaluation Space, when offered, writes to the same queue.)
+  - type: input
+    id: model-name
+    attributes:
+      label: Model name
+      placeholder: "e.g. AASIST-L"
+    validations:
+      required: true
+  - type: input
+    id: paper
+    attributes:
+      label: Paper / arXiv id (optional)
+      description: "A paper is what lets a model into the ranked tiers. Leave blank for proprietary/unpublished — it's still welcome, just unranked."
+      placeholder: "e.g. 2110.01200"
+  - type: input
+    id: code-url
+    attributes:
+      label: Code URL
+      placeholder: "https://github.com/you/your-model"
+    validations:
+      required: true
+  - type: input
+    id: checkpoint-url
+    attributes:
+      label: Checkpoint / weights URL
+      description: "Where the trained weights live (HF repo, release asset, etc.)."
+    validations:
+      required: true
+  - type: input
+    id: params
+    attributes:
+      label: Parameter count in millions (optional)
+      description: "Powers the 'By model size' tab."
+      placeholder: "e.g. 52.3"
+  - type: input
+    id: datasets
+    attributes:
+      label: Which datasets?
+      description: "Specific dataset ids, or just 'all Core'."
+      placeholder: "all Core"
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: Contact
+      description: "Email or HF username we can reach you at."
+    validations:
+      required: true
+  - type: textarea
+    id: running-notes
+    attributes:
+      label: Anything special about running it?
+      description: "Non-standard dependencies, exact command, expected runtime, device quirks, sample-rate assumptions, etc."
+  - type: checkboxes
+    id: license
+    attributes:
+      label: License / usage
+      options:
+        - label: "I confirm the code and checkpoint are licensed so the maintainers may download and run them to produce a benchmark score."
+          required: true

@@ -27,7 +27,7 @@ accumulate. You:
   ```bash
   pip install huggingface_hub && huggingface-cli login
   ```
-- `pip install speech-spoof-bench`.
+- `pip install git+https://github.com/lab260ru/speech_spoof_bench.git` (it isn't on PyPI yet).
 - Membership/permission to push under the `SpeechAntiSpoofingBenchmarks` org (ask the
   maintainer if you don't have it).
 

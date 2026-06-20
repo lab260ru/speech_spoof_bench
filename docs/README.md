@@ -51,6 +51,10 @@ Plus, on Hugging Face, an open-ended set of **dataset repos**
 
 ### Developing & contributing — *how to change it without breaking it*
 
+**New contributor?** Start with [CONTRIBUTING.md](../CONTRIBUTING.md) for a task-to-doc map
+and the pre-PR checklist. The [FAQ](FAQ.md) covers the handful of silent failures that trip
+most people up.
+
 | Doc | Covers |
 |-----|--------|
 | [developing/setup.md](developing/setup.md) | Local dev environment, editable installs, the local dataset registry, fully-offline workflow. |

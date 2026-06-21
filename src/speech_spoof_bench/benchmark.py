@@ -13,7 +13,7 @@ import yaml
 from . import __version__ as _BENCH_VERSION
 from .cache import purge_hf_cache
 from .loader import resolve
-from .metrics import get_metric
+from .metrics import call_metric, get_metric
 from .model import AntiSpoofingModel
 from .runner import run_dataset
 
@@ -144,7 +144,11 @@ class Benchmark:
                 metric_extras: dict[str, dict[str, Any]] = {}
                 for mid in source.metrics:
                     spec_m = get_metric(mid)
-                    mr = spec_m.fn(scores_map, run_res.labels)
+                    # No per-call config on the local benchmark path: config-aware
+                    # metrics (e.g. srr_complement, which needs a calibrated t*)
+                    # are scored at maintainer/reproduce time from the submission's
+                    # calibration block. eer_percent ignores config.
+                    mr = call_metric(spec_m, scores_map, run_res.labels)
                     metric_values[mid] = mr.value
                     metric_extras[mid] = dict(mr.extras)
 

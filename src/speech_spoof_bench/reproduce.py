@@ -20,7 +20,23 @@ from datasets import load_dataset
 logger = logging.getLogger(__name__)
 
 from . import hf_fetch, submission
-from .metrics import get_metric
+from .metrics import call_metric, get_metric
+
+
+def _repro_config(data: dict, mid: str) -> dict:
+    """Resolve per-metric config for deterministic re-verification.
+
+    srr_complement needs a calibrated threshold t* (transferred from the
+    calibration source dataset, e.g. DeepVoice). It travels in the submission's
+    top-level ``calibration`` block; because scores.txt is SHA-pinned, labels
+    are read at the pinned revision, and t* is a literal in the SHA-validated
+    YAML, the recomputed value is a pure function of (scores, labels, t*).
+    Metrics that take no config (e.g. eer_percent) get an empty dict and ignore it.
+    """
+    cal = data.get("calibration") or {}
+    if "threshold" in cal:
+        return {"threshold": float(cal["threshold"])}
+    return {}
 
 
 def _parse_scores_txt(path: Path) -> dict[str, float]:
@@ -233,7 +249,16 @@ def run_scoring(
                 file=sys.stderr,
             )
             return 1
-        result = spec.fn(scores_subset, labels_subset)
+        try:
+            result = call_metric(
+                spec, scores_subset, labels_subset, _repro_config(data, mid)
+            )
+        except Exception as e:
+            # A metric may raise (e.g. srr_complement with no calibration
+            # threshold, or a single-class set for a metric that needs both).
+            # FAIL cleanly rather than crash the whole reproduction.
+            print(f"FAIL: metric {mid!r}: {e}", file=sys.stderr)
+            return 1
         claimed = float(data["scores"][mid])
         if abs(result.value - claimed) > tolerance:
             print(

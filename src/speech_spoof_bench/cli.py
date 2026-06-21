@@ -57,6 +57,8 @@ def _cmd_validate_dataset(args: argparse.Namespace) -> int:
         args.spec,
         skip_submissions=args.skip_submissions,
         force_remote=args.no_local,
+        labels_only=args.labels_only,
+        n_trials=args.n_trials,
     )
     print(report.format())
     return 0 if report.ok else 1
@@ -241,6 +243,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-local",
         action="store_true",
         help="ignore the local-dataset registry; always stream from HF",
+    )
+    vd.add_argument(
+        "--labels-only",
+        action="store_true",
+        help="validate a labels-only dataset repo (data/labels.parquet, no "
+             "audio): runs L1-L4 + D6 + D7 + S1-S4, skips audio checks "
+             "D1/D3/D4/D5",
+    )
+    vd.add_argument(
+        "--n-trials",
+        type=int,
+        default=None,
+        help="declared trial count for the L4 cross-check (labels-only mode)",
     )
     vd.set_defaults(func=_cmd_validate_dataset)
 

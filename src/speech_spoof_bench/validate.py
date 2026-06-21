@@ -12,13 +12,16 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import pyarrow.parquet as pq
 from datasets import ClassLabel
 from huggingface_hub import hf_hub_download
 from tqdm.auto import tqdm
 
 from . import hf_fetch
+from . import labels as labels_mod
 from . import submission as sub_mod
-from .loader import resolve
+from .labels import LABELS_FILENAME
+from .loader import _HF_ID_RE, _parse_eval_yaml, resolve
 
 REQUIRED_README_KEYS = {
     "license", "language", "pretty_name", "task_categories",
@@ -302,30 +305,144 @@ def _check_dataset_side(
     return checks, info
 
 
-def validate_dataset(
-    spec: str, *, skip_submissions: bool = False, force_remote: bool = False,
-) -> ValidationReport:
-    report = ValidationReport(dataset_spec=spec)
-    try:
-        dataset_checks, info = _check_dataset_side(spec, force_remote=force_remote)
-    except KeyError as e:
-        # loader.py's _parse_eval_yaml raises KeyError("metric id 'X' not
-        # registered (from <path>)") when eval.yaml references an unknown
-        # metric. We surface this as a D7 failure rather than propagating.
-        # If the loader's message format ever changes, the substring check
-        # below will silently fail — keep these in sync.
-        msg = str(e)
-        if "not registered" in msg:
-            report.dataset_checks.append(CheckResult("D7", False, msg))
+def _check_labels_only_side(
+    spec: str, *, force_remote: bool = False, n_trials: int | None = None,
+) -> tuple[list[CheckResult], dict[str, Any]]:
+    """Validate a labels-only repo (no audio): L1-L4 + D6 + D7.
+
+    A labels-only dataset ships README.md + eval.yaml + submissions/ +
+    data/labels.parquet and NO audio shards (the source audio lives elsewhere,
+    e.g. a >500 GB repo). The audio checks D1/D3/D4/D5 cannot run, so we replace
+    them with L1-L4 on the labels file and keep the README (D6) and metric (D7)
+    checks. Submission checks (S1-S4) run unchanged via the shared loop, so a
+    labels-only dataset still earns the same trust.
+    """
+    from . import local_registry
+
+    checks: list[CheckResult] = []
+
+    candidate = Path(spec)
+    local_dir: Path | None = None
+    canonical_id: str | None = None
+    if candidate.is_dir():
+        local_dir = candidate
+    elif _HF_ID_RE.match(spec):
+        canonical_id = spec
+        if not force_remote:
+            mapped = local_registry.lookup(spec)
+            if mapped is not None:
+                local_dir = Path(mapped)
+                canonical_id = None
+    else:
+        raise ValueError(
+            f"dataset spec {spec!r} is not a directory and not in <org>/<name> form"
+        )
+
+    # eval.yaml -> metrics (D7). _parse_eval_yaml raises KeyError for an
+    # unregistered metric, which validate_dataset maps to a D7 failure.
+    if local_dir is not None:
+        eval_path = local_dir / "eval.yaml"
+        labels_path: Path | None = local_dir / "data" / LABELS_FILENAME
+    else:
+        eval_path = Path(hf_hub_download(
+            repo_id=spec, filename="eval.yaml", repo_type="dataset"))
+        try:
+            labels_path = Path(hf_hub_download(
+                repo_id=spec, filename=f"data/{LABELS_FILENAME}",
+                repo_type="dataset"))
+        except Exception:
+            labels_path = None
+    meta = _parse_eval_yaml(eval_path)
+
+    # L1: labels.parquet exists, readable, and non-empty.
+    labels: dict[str, int] | None = None
+    if labels_path is not None and Path(labels_path).is_file():
+        try:
+            loaded = labels_mod.load_labels_file(labels_path)
+        except Exception as e:
+            loaded = None
+            checks.append(CheckResult("L1", False, f"labels.parquet unreadable: {e}"))
+        if loaded is not None:
+            if len(loaded) == 0:
+                # A 0-row labels file must not earn trust (the default CLI
+                # invocation omits --n-trials, so L4 alone wouldn't catch it).
+                checks.append(CheckResult("L1", False, "labels.parquet has 0 rows"))
+            else:
+                labels = loaded
+                checks.append(CheckResult(
+                    "L1", True, f"labels.parquet readable ({len(labels)} rows)"))
+    else:
+        checks.append(CheckResult("L1", False, f"missing data/{LABELS_FILENAME}"))
+
+    if labels is None:
+        for cid in ("L2", "L3", "L4"):
+            checks.append(CheckResult(cid, False, "skipped (L1 failed)"))
+    else:
+        # L2: label values in {0,1}.
+        bad = sorted({v for v in labels.values() if v not in (0, 1)})
+        if bad:
+            checks.append(CheckResult("L2", False, f"labels not in {{0,1}}: {bad[:5]}"))
         else:
-            report.dataset_checks.append(CheckResult("D0", False, f"load error: {e}"))
-        return report
+            checks.append(CheckResult("L2", True, "labels in {0,1}"))
+        # L3: utterance_id integrity — non-null/non-empty AND unique. Raw rows
+        # == distinct ids catches duplicates (the dict collapses them); a null
+        # or empty id is unmatchable against a submitter's scores.txt.
+        bad_ids = [u for u in labels if u is None or u == ""]
+        n_rows = pq.read_table(str(labels_path), columns=["utterance_id"]).num_rows
+        if bad_ids:
+            checks.append(CheckResult(
+                "L3", False, f"null/empty utterance_id ({len(bad_ids)})"))
+        elif n_rows == len(labels):
+            checks.append(CheckResult("L3", True, f"utterance_id unique ({len(labels)})"))
+        else:
+            checks.append(CheckResult(
+                "L3", False,
+                f"duplicate utterance_id: {n_rows} rows, {len(labels)} distinct",
+            ))
+        # L4: count vs declared n_trials (soft pass when not provided; the
+        # authoritative n_trials lives in the manifest entry).
+        if n_trials is None:
+            checks.append(CheckResult(
+                "L4", True, f"count={len(labels)} (n_trials not provided)"))
+        elif len(labels) == n_trials:
+            checks.append(CheckResult("L4", True, f"count == n_trials ({n_trials})"))
+        else:
+            checks.append(CheckResult(
+                "L4", False, f"count {len(labels)} != n_trials {n_trials}"))
+
+    # D6: README frontmatter (same rule as the audio path).
+    try:
+        readme_text = _load_readme(
+            spec_path=local_dir,
+            repo_id=None if local_dir is not None else spec,
+        )
+        fm = _read_readme_frontmatter(readme_text)
+        if fm is None:
+            checks.append(CheckResult("D6", False, "README frontmatter missing or invalid"))
+        else:
+            missing = REQUIRED_README_KEYS - set(fm.keys())
+            if missing:
+                checks.append(CheckResult("D6", False, f"frontmatter missing keys: {sorted(missing)}"))
+            elif "arena-ready" not in (fm.get("tags") or []):
+                checks.append(CheckResult("D6", False, "tags missing 'arena-ready'"))
+            else:
+                checks.append(CheckResult("D6", True, "frontmatter ok"))
     except Exception as e:
-        report.dataset_checks.append(CheckResult("D0", False, f"load error: {e}"))
-        return report
-    report.dataset_checks = dataset_checks
-    if skip_submissions:
-        return report
+        checks.append(CheckResult("D6", False, f"README load error: {e}"))
+
+    # D7: metric registry (reaching here means _parse_eval_yaml accepted them).
+    checks.append(CheckResult("D7", True, f"metrics registered: {meta['metrics']}"))
+
+    info = {
+        "is_local": local_dir is not None,
+        "local_path": local_dir,
+        "canonical_id": canonical_id,
+    }
+    return checks, info
+
+
+def _run_submission_checks(report: ValidationReport, info: dict[str, Any]) -> None:
+    """S1-S4 over submissions/*.yaml. Shared by the audio and labels-only paths."""
     for display_path, local_path in _list_submission_paths(
         spec_path=info["local_path"], repo_id=info["canonical_id"]
     ):
@@ -365,4 +482,37 @@ def validate_dataset(
             sr.checks.append(CheckResult("S3", False, f"scores_url unreachable: {e}"))
             sr.checks.append(CheckResult("S4", False, "depends on S3"))
         report.submission_reports.append(sr)
+
+
+def validate_dataset(
+    spec: str, *, skip_submissions: bool = False, force_remote: bool = False,
+    labels_only: bool = False, n_trials: int | None = None,
+) -> ValidationReport:
+    report = ValidationReport(dataset_spec=spec)
+    try:
+        if labels_only:
+            dataset_checks, info = _check_labels_only_side(
+                spec, force_remote=force_remote, n_trials=n_trials
+            )
+        else:
+            dataset_checks, info = _check_dataset_side(spec, force_remote=force_remote)
+    except KeyError as e:
+        # loader.py's _parse_eval_yaml raises KeyError("metric id 'X' not
+        # registered (from <path>)") when eval.yaml references an unknown
+        # metric. We surface this as a D7 failure rather than propagating.
+        # If the loader's message format ever changes, the substring check
+        # below will silently fail — keep these in sync.
+        msg = str(e)
+        if "not registered" in msg:
+            report.dataset_checks.append(CheckResult("D7", False, msg))
+        else:
+            report.dataset_checks.append(CheckResult("D0", False, f"load error: {e}"))
+        return report
+    except Exception as e:
+        report.dataset_checks.append(CheckResult("D0", False, f"load error: {e}"))
+        return report
+    report.dataset_checks = dataset_checks
+    if skip_submissions:
+        return report
+    _run_submission_checks(report, info)
     return report

@@ -125,3 +125,37 @@ def test_changed_submissions_ignores_identical_file(monkeypatch, tmp_path):
     same = tmp_path / "same.yaml"; same.write_text("eer: 0.48\n")
     monkeypatch.setattr(verify_pr, "_download_at_revision", lambda *a, **k: str(same))
     assert verify_pr._changed_submissions(api, "Org/Foo", "refs/pr/2") == []
+
+
+def test_closed_verdict_skips_label_stream(monkeypatch):
+    sub = {"system": {"slug": "m", "name": "M"},
+           "dataset": {"revision": "abc1234"},
+           "scores": {"eer_percent": 1.0},
+           "reproduction": {"match": "organizer"},
+           "submitted_at": "2026-01-01"}
+    monkeypatch.setattr(verify_pr, "_download_at_revision", lambda *a, **k: "/tmp/x")
+    monkeypatch.setattr(verify_pr.Path, "read_text", lambda self: "ignored")
+    monkeypatch.setattr(verify_pr.submission, "parse_submission", lambda text: sub)
+    def _boom(data):
+        raise AssertionError("label stream should be skipped for a closed dataset")
+    monkeypatch.setattr(verify_pr, "_run_scoring_repro", _boom)
+
+    v = verify_pr._verdict_for(api=None, repo="org/d", branch="b",
+                               path="submissions/m.yaml", verification="organizer")
+    assert v.eer_ok is None and v.closed is True and v.passed is True
+
+
+def test_scores_only_verdict_skips_label_stream(monkeypatch):
+    sub = {"system": {"slug": "m", "name": "M"},
+           "dataset": {"revision": "abc1234"},
+           "scores": {"eer_percent": 1.0},
+           "reproduction": {"match": "scores-only"},
+           "submitted_at": "2026-01-01"}
+    monkeypatch.setattr(verify_pr, "_download_at_revision", lambda *a, **k: "/tmp/x")
+    monkeypatch.setattr(verify_pr.Path, "read_text", lambda self: "ignored")
+    monkeypatch.setattr(verify_pr.submission, "parse_submission", lambda text: sub)
+    monkeypatch.setattr(verify_pr, "_run_scoring_repro",
+                        lambda data: (_ for _ in ()).throw(AssertionError("label stream should be skipped")))
+    v = verify_pr._verdict_for(api=None, repo="org/d", branch="b",
+                               path="submissions/m.yaml", verification="scores-only")
+    assert v.eer_ok is None and v.closed is True and v.passed is True

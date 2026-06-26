@@ -105,3 +105,29 @@ def test_manage_issues_closes_resolved_issue():
     # No failures this run → the open issue should be closed.
     nightly.manage_issues(failures=[], api=api)
     api.close_issue.assert_called_once_with(9)
+
+
+def test_nightly_skips_truly_closed_dataset(monkeypatch, tmp_path):
+    from speech_spoof_bench.ci import green_store
+    store_path = tmp_path / "green.json"
+    monkeypatch.setattr(green_store, "DEFAULT_STORE_PATH", store_path)
+    manifest = {"core_set": [{"id": "org/closed", "verification": "organizer"}],
+                "extended": []}
+    monkeypatch.setattr(nightly, "_fetch_manifest", lambda: manifest)
+    def _boom(did, **k):  # must not even list submissions for a closed dataset
+        raise AssertionError("closed dataset must be skipped")
+    monkeypatch.setattr(nightly, "_list_submission_files", _boom)
+    assert nightly.collect_failures() == []
+
+
+def test_nightly_skips_scores_only_dataset(monkeypatch, tmp_path):
+    from speech_spoof_bench.ci import green_store
+    store_path = tmp_path / "green.json"
+    monkeypatch.setattr(green_store, "DEFAULT_STORE_PATH", store_path)
+    manifest = {"core_set": [{"id": "org/closed", "verification": "scores-only"}],
+                "extended": []}
+    monkeypatch.setattr(nightly, "_fetch_manifest", lambda: manifest)
+    def _boom(did, **k):  # must not even list submissions for a scores-only dataset
+        raise AssertionError("must be skipped")
+    monkeypatch.setattr(nightly, "_list_submission_files", _boom)
+    assert nightly.collect_failures() == []

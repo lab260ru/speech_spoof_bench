@@ -17,6 +17,19 @@ from ._hf_retry import retry_on_429
 logger = logging.getLogger(__name__)
 
 
+def _dataset_verification(repo: str) -> str:
+    """The dataset's `verification` mode from the manifest, else 'reproduce'."""
+    try:
+        from ..manifest import fetch_manifest
+        m = fetch_manifest()
+        for e in m.get("core_set", []) + m.get("extended", []):
+            if e.get("id") == repo:
+                return e.get("verification", "reproduce")
+    except Exception:  # noqa: BLE001 — manifest unreachable/malformed → default to full reproduce
+        return "reproduce"
+    return "reproduce"
+
+
 @dataclass
 class Verdict:
     path: str
@@ -24,9 +37,12 @@ class Verdict:
     sha_ok: Optional[bool]   # None when not reached (schema failed first)
     eer_ok: Optional[bool]
     notes: str
+    closed: bool = False
 
     @property
     def passed(self) -> bool:
+        if self.closed:
+            return bool(self.schema_ok)
         return bool(self.schema_ok and self.sha_ok and self.eer_ok)
 
 
@@ -100,7 +116,8 @@ def _changed_submissions(api: HfApi, repo: str, branch: str) -> list[str]:
     return sorted(added | modified)
 
 
-def _verdict_for(api: HfApi, repo: str, branch: str, path: str) -> Verdict:
+def _verdict_for(api: HfApi, repo: str, branch: str, path: str,
+                 verification: str = "reproduce") -> Verdict:
     try:
         local = _download_at_revision(repo, path, revision=branch, repo_type="dataset")
         data = submission.parse_submission(Path(local).read_text())
@@ -108,6 +125,10 @@ def _verdict_for(api: HfApi, repo: str, branch: str, path: str) -> Verdict:
         return Verdict(path=path, schema_ok=False, sha_ok=None, eer_ok=None, notes=f"schema: {e}")
     except Exception as e:  # noqa: BLE001
         return Verdict(path=path, schema_ok=False, sha_ok=None, eer_ok=None, notes=f"fetch/parse: {e}")
+
+    if verification in ("organizer", "scores-only"):
+        return Verdict(path=path, schema_ok=True, sha_ok=None, eer_ok=None, closed=True,
+                       notes=f"{verification}: label stream skipped (truly-closed)")
 
     passed, notes = _run_scoring_repro(data)
     if passed:
@@ -162,7 +183,8 @@ def run(*, repo: str, pr: int, branch: str,
         _post_comment(repo, pr, format_markdown([], gh_run_url=gh_run_url))
         return 0
 
-    verdicts = [_verdict_for(api, repo, branch, p) for p in paths]
+    verification = _dataset_verification(repo)
+    verdicts = [_verdict_for(api, repo, branch, p, verification=verification) for p in paths]
     body = format_markdown(verdicts, gh_run_url=gh_run_url)
     _post_comment(repo, pr, body)
     return 0 if all(v.passed for v in verdicts) else 1

@@ -76,6 +76,9 @@ def collect_failures(*, full: bool = False) -> list[Failure]:
     m = _fetch_manifest()
     for entry in m.get("core_set", []) + m.get("extended", []):
         did = entry["id"]
+        if entry.get("verification") in ("organizer", "scores-only"):
+            logger.info("nightly skip (truly-closed): %s", did)
+            continue
         try:
             paths = _list_submission_files(did)
         except Exception as exc:  # noqa: BLE001

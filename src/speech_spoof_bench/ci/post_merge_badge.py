@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 
 import yaml
@@ -77,7 +78,8 @@ def _sentinel_for(sha: str, path: str) -> str:
     return f"<!-- ssb:badge --> sha={sha} path={path}"
 
 
-def _already_posted(api: HfApi, repo: str, pr: int, sentinel: str) -> bool:
+def _find_posted(api: HfApi, repo: str, pr: int, sentinel: str):
+    """Return the existing badge comment event carrying `sentinel`, or None."""
     try:
         details = retry_on_429(
             api.get_discussion_details,
@@ -85,12 +87,20 @@ def _already_posted(api: HfApi, repo: str, pr: int, sentinel: str) -> bool:
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("get_discussion_details failed for %s#%d: %s", repo, pr, exc)
-        return False
+        return None
     for ev in getattr(details, "events", []) or []:
         body = getattr(ev, "content", "") or ""
         if sentinel in body:
-            return True
-    return False
+            return ev
+    return None
+
+
+_RUN_LINK_RE = re.compile(r"_🤖 \[view CI run\]\([^)]*\)_")
+
+
+def _same_content(a: str, b: str) -> bool:
+    """Equal up to the per-run CI link, which differs on every re-run."""
+    return _RUN_LINK_RE.sub("", a).strip() == _RUN_LINK_RE.sub("", b).strip()
 
 
 def _post_comment(repo: str, pr: int, body: str) -> None:
@@ -102,6 +112,34 @@ def _post_comment(repo: str, pr: int, body: str) -> None:
     api = HfApi(token=token)
     retry_on_429(api.comment_discussion, repo_id=repo, repo_type="dataset",
                  discussion_num=pr, comment=body)
+
+
+def _edit_comment(repo: str, pr: int, comment_id: str, body: str) -> None:
+    token = os.environ.get("HF_BOT_TOKEN")
+    if not token:
+        logger.warning("HF_BOT_TOKEN not set; printing updated comment instead of editing")
+        print(body)
+        return
+    api = HfApi(token=token)
+    retry_on_429(api.edit_discussion_comment, repo_id=repo, repo_type="dataset",
+                 discussion_num=pr, comment_id=comment_id, new_content=body)
+
+
+def _build_body(api: HfApi, repo: str, path: str, sha: str, gh_run_url: str) -> str:
+    local = _download_at_revision(repo, path, revision=sha, repo_type="dataset")
+    data = submission.parse_submission(Path(local).read_text())
+    dataset_id = data["dataset"]["id"]
+    dataset_rev = data["dataset"]["revision"]
+    primary = _primary_metric_at(api, dataset_id, dataset_rev)
+    return badge.build_paste_comment(
+        data,
+        arena_url=badge.ARENA_URL,
+        dataset_canonical_id=dataset_id,
+        primary_metric=primary,
+        submission_path=path,
+        merge_sha=sha,
+        gh_run_url=gh_run_url,
+    )
 
 
 def run(*, repo: str, pr: int, sha: str,
@@ -120,25 +158,18 @@ def run(*, repo: str, pr: int, sha: str,
     errors = 0
     for path in paths:
         sentinel = _sentinel_for(sha, path)
-        if _already_posted(api, repo, pr, sentinel):
-            logger.info("badge comment already present for %s; skipping", path)
-            continue
         try:
-            local = _download_at_revision(repo, path, revision=sha, repo_type="dataset")
-            data = submission.parse_submission(Path(local).read_text())
-            dataset_id = data["dataset"]["id"]
-            dataset_rev = data["dataset"]["revision"]
-            primary = _primary_metric_at(api, dataset_id, dataset_rev)
-            body = badge.build_paste_comment(
-                data,
-                arena_url=badge.ARENA_URL,
-                dataset_canonical_id=dataset_id,
-                primary_metric=primary,
-                submission_path=path,
-                merge_sha=sha,
-                gh_run_url=gh_run_url,
-            )
-            _post_comment(repo, pr, body)
+            body = _build_body(api, repo, path, sha, gh_run_url)
+            existing = _find_posted(api, repo, pr, sentinel)
+            if existing is None:
+                _post_comment(repo, pr, body)
+            elif _same_content(existing.content, body):
+                logger.info("badge comment already up to date for %s; skipping", path)
+            else:
+                # Re-running the workflow repairs a comment rendered by an older
+                # badge template (e.g. the CD-ADD hyphen escaping fix).
+                logger.info("badge comment stale for %s; updating in place", path)
+                _edit_comment(repo, pr, existing.id, body)
         except Exception as exc:  # noqa: BLE001
             logger.error("badge generation failed for %s: %s", path, exc)
             errors += 1

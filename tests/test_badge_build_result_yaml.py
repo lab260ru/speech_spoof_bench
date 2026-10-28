@@ -95,3 +95,10 @@ def test_output_passes_result_schema():
     out = badge.build_result_yaml(_SUBMISSION, arena_url=_ARENA_URL)
     parsed = yaml.safe_load(out)
     validate(instance=parsed, schema=schema)
+
+
+def test_paperless_system_omits_paper():
+    # Unpublished/proprietary systems (e.g. M1) have no system.paper.
+    sub = {**_SUBMISSION, "system": {k: v for k, v in _SUBMISSION["system"].items() if k != "paper"}}
+    parsed = yaml.safe_load(badge.build_result_yaml(sub, arena_url=_ARENA_URL))
+    assert set(parsed["system"].keys()) == {"name", "slug"}

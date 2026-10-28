@@ -139,3 +139,22 @@ def test_endpoint_badge_md_builder():
     assert md.startswith("[![arena tier](https://img.shields.io/endpoint?url=")
     assert "/badge/aasist/tier.json" in md
     assert md.endswith(f"({badge.ARENA_URL}?system=aasist)")
+
+
+def _build_for(sub):
+    return badge.build_paste_comment(
+        sub, arena_url=_ARENA_URL, dataset_canonical_id="Org/ASVspoof2019_LA",
+        primary_metric="eer_percent", submission_path="submissions/m1.yaml",
+        merge_sha="deadbeefcafe1234", gh_run_url="https://x/runs/9",
+    )
+
+
+def test_paperless_system_gets_no_paper_note():
+    sub = {**_SUBMISSION, "system": {k: v for k, v in _SUBMISSION["system"].items() if k != "paper"}}
+    body = _build_for(sub)
+    assert "No paper attached" in body
+    assert "Unpublished / Proprietary" in body
+
+
+def test_system_with_paper_has_no_paper_note():
+    assert "No paper attached" not in _build_for(_SUBMISSION)

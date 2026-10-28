@@ -50,13 +50,14 @@ def _project_submission_for_result(submission: dict, *, arena_url: str) -> dict:
     except KeyError as exc:
         raise BadgeError(f"submission missing required key: {exc.args[0]}") from exc
 
+    result_system = {"name": system["name"], "slug": slug}
+    # Unpublished/proprietary systems carry no paper.
+    if system.get("paper", {}).get("arxiv_id"):
+        result_system["paper"] = {"arxiv_id": system["paper"]["arxiv_id"]}
+
     return {
         "schema_version": 1,
-        "system": {
-            "name": system["name"],
-            "slug": slug,
-            "paper": {"arxiv_id": system["paper"]["arxiv_id"]},
-        },
+        "system": result_system,
         "dataset": {
             "id": dataset["id"],
             "revision": dataset["revision"],
@@ -149,9 +150,18 @@ def build_paste_comment(
         f"({arena_url}?system={slug})"
     )
 
+    paper_note = ""
+    if not submission["system"].get("paper", {}).get("arxiv_id"):
+        paper_note = (
+            "> ℹ️ **No paper attached.** This system is listed in the "
+            "🔓 Unpublished / Proprietary tier and is not ranked against published "
+            "models.\n\n"
+        )
+
     return (
         f"**speech-spoof-bench** — submission merged ✅\n\n"
         f"System `{slug}` is now live on the [Arena]({arena_url}?system={slug}).\n\n"
+        f"{paper_note}"
         f"To display a backlink badge on your model page, take the two steps below.\n\n"
         f"### 1. Add `result.yaml` to your model repo\n\n"
         f"```yaml\n{result_yaml}```\n\n"

@@ -103,12 +103,16 @@ def _endpoint_badge_md(label: str, slug: str, kind: str) -> str:
 def _shields_url(metric: str, dataset_name: str, value_str: str, color: str) -> str:
     """Build a static shields.io badge URL.
 
-    Shields rules: `_` → real underscore, `__` → literal `_`. So pre-double
-    underscores in our segment text, then URL-encode the result. `value_str` is
-    the already-formatted display value (without the trailing %).
+    Shields rules: `_` → real underscore, `__` → literal `_`; `-` separates
+    segments, `--` → literal `-`. So pre-double both in our segment text, then
+    URL-encode the result. `value_str` is the already-formatted display value
+    (without the trailing %).
     """
-    label = quote(f"{metric.upper().replace('_', ' ')} on {dataset_name}".replace("_", "__"))
-    msg = quote(f"{value_str}%".replace("_", "__"))
+    def esc(text: str) -> str:
+        return quote(text.replace("_", "__").replace("-", "--"))
+
+    label = esc(f"{metric.upper().replace('_', ' ')} on {dataset_name}")
+    msg = esc(f"{value_str}%")
     return f"https://img.shields.io/badge/{label}-{msg}-{color}"
 
 

@@ -158,3 +158,10 @@ def test_paperless_system_gets_no_paper_note():
 
 def test_system_with_paper_has_no_paper_note():
     assert "No paper attached" not in _build_for(_SUBMISSION)
+
+
+def test_hyphenated_dataset_name_is_escaped_for_shields():
+    # shields treats a single '-' as a segment separator → CD-ADD badge 404'd.
+    url = badge._shields_url("EER%", "CD-ADD", "1.2", "green")
+    assert "CD--ADD" in url
+    assert url.endswith("-1.2%25-green")

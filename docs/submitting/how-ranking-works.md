@@ -59,6 +59,21 @@ The **Mean** column is the single score that drives **Rank**, and it changes wit
 In both views a model's per-dataset cell stays **blank** for datasets it did not run; the
 50% EER substitution feeds only the pooled Mean/Rank — it is never shown as a real result.
 
+## n/a\* — trained on overlapping data
+
+If a model was trained on data that overlaps a test dataset (the same source corpus, e.g.
+LibriTTS voices, or the dataset's own eval split), its cell shows **n/a\*** instead of the
+score — hover it to see the score and the shared corpus. That dataset is **left out of
+the model's Mean** (no penalty) but still **counts toward its tier**. On the Per-dataset
+tab the model keeps its score, gets a `*`, and no rank place. What each dataset is built
+from and what each model trained on is recorded in
+[`provenance.yaml`](https://huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/arena-manifest)
+on the manifest repo; see `docs/architecture/provenance.md` for the matching rule.
+
+**Highlighting:** on the Overview, the best value per dataset among all open-source
+(published) models is shown in **green**; the best within the proprietary tier in **blue**.
+n/a\* cells are never highlighted.
+
 ## Badges — what's been checked
 
 Next to a model you'll see small badges:
@@ -67,9 +82,9 @@ Next to a model you'll see small badges:
   byte-for-byte unchanged (using a SHA-256 checksum — a fingerprint that changes if even
   one character is edited), and recomputed the metric. This is the standard verification
   every merged row carries.
-- **★ inference** — a maintainer re-ran the model *end-to-end* from its checkpoint. This
-  is a stronger, optional check. **It is not yet automated**, so today's verified rows
-  carry **✔ scoring**.
+- **★ inference** — a maintainer re-ran the model *end-to-end* from its checkpoint and got
+  these scores. This is the stronger check. Every model the maintainers ran themselves
+  carries ★; a third-party score file that was only re-checked keeps **✔ scoring**.
 - **📄 paper** — the model links a paper, so it can compete in the ranked tiers.
 
 ## Live tier & rank badges (for your model card)

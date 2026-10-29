@@ -4,7 +4,7 @@ This guide assumes no prior knowledge. By the end you'll have a new anti-spoofin
 benchmark in the org that models can be evaluated on.
 
 > 💡 Not sure your dataset qualifies, or need help hosting large audio? Email
-> **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)** before you start — it can save
+> **[kborodin.research@gmail.com](mailto:kborodin.research@gmail.com)** before you start — it can save
 > you a lot of work.
 
 ## What you're actually doing
@@ -106,6 +106,11 @@ check.
        revision: <commit-sha>
    ```
 
+3. In the same PR, add your dataset's **source corpora** to `provenance.yaml` (what its
+   bona fide audio and cloned speakers come from, e.g. `["LibriTTS:test"]`), so models
+   trained on that data get flagged n/a\*. Unsure? Describe the sources in the PR text and
+   the maintainers will add it. See `docs/architecture/provenance.md`.
+
 ## Step 7 — Core vs Extended
 
 - **Core** — counts toward tier coverage (Gold/Silver/Bronze) and the global rank.
@@ -123,4 +128,4 @@ proven stable and have a few submissions.
 
 ---
 
-Questions at any step? Email **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)**.
+Questions at any step? Email **[kborodin.research@gmail.com](mailto:kborodin.research@gmail.com)**.

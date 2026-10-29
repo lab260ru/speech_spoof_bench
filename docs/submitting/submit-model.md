@@ -5,7 +5,7 @@ your model's result on the Arena leaderboard.
 
 > 💡 **Can't run the full benchmark yourself?** (No GPU, dataset too big, etc.) Open a
 > **[submit-for-me issue](https://github.com/lab260ru/speech_spoof_bench/issues/new?template=submit-for-me.yml)**
-> or email **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)**, and we'll consider
+> or email **[kborodin.research@gmail.com](mailto:kborodin.research@gmail.com)**, and we'll consider
 > running your model for you.
 
 ## What you're actually doing
@@ -133,6 +133,8 @@ system:
   code: https://github.com/you/my-model          # source code
   checkpoint: https://huggingface.co/you/my-model # weights
   params_millions: 52.3          # optional: parameter count in millions
+  trained_on:                    # optional: Arena datasets whose data you trained on (any split)
+    - SpeechAntiSpoofingBenchmarks/ASVspoof2019_LA
   paper:
     arxiv_id: "2110.01200"
     url: https://arxiv.org/abs/2110.01200
@@ -141,6 +143,12 @@ system:
         title = {...}, author = {...}, year = {2022}
       }
 ```
+
+`trained_on` is optional: list the Arena datasets whose audio (any split) your model
+trained on. The training split of a corpus does not overlap its evaluation split (e.g.
+ASVspoof2019 LA **train** is fine), so declare only what overlaps — those cells then show
+n/a\* and are left out of your Mean (no penalty). Trained on other public corpora (LibriTTS,
+VCTK, Common Voice, …)? Say so in the PR; the maintainers record it in `provenance.yaml`.
 
 No paper yet? Point `paper` at the most relevant reference (e.g. the dataset paper) and
 say so in `description`.
@@ -179,9 +187,9 @@ verifies it's unchanged, and recomputes the EER — it must match your claim. If
 your row is merged with a **✔ scoring** badge — the verification every merged row carries
 today.
 
-A stronger **★ inference** badge (re-running your model end-to-end from its checkpoint) is
-planned, but **full inference re-verification is not yet automated** — so for now every
-verified row shows **✔ scoring**.
+When a maintainer re-runs your model end-to-end from its checkpoint, the row gets the
+stronger **★ inference** badge instead. This is done by hand (not automated), so a
+score file that was only re-checked keeps **✔ scoring**.
 
 ## Step 8 — Add the badge to your model
 
@@ -198,5 +206,5 @@ your model's README so visitors can jump to your Arena row.
 
 ---
 
-Stuck on any step? Email **[k.n.borodin@mtuci.ru](mailto:k.n.borodin@mtuci.ru)** — happy
+Stuck on any step? Email **[kborodin.research@gmail.com](mailto:kborodin.research@gmail.com)** — happy
 to help.

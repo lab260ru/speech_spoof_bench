@@ -190,6 +190,10 @@ core_set:
 - Adding a dataset is a **data** change → no `schema_version`/`ranking_version` bump. Add
   a `CHANGELOG.yaml` ➕ `dataset_added` note so it shows on the Arena's Over-time tab.
 - The revision must be **lowercase hex, 7–40 chars** (`^[0-9a-f]{7,40}$`).
+- In the same PR, add the dataset's `datasets:` entry (and any new `corpora:`) to
+  **`provenance.yaml`**: the corpora of its bona fide audio and of the speakers cloned for its
+  spoofs, with official splits where known (`LibriTTS:test`), and a citation comment. This
+  drives the n/a\* "trained on" cells — see `docs/architecture/provenance.md`.
 
 ## Later: re-pinning a dataset
 

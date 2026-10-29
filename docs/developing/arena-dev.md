@@ -20,6 +20,24 @@ uvicorn main:app --host 0.0.0.0 --port 7860
 The UI hydrates from the committed `cache.json` instantly, then a background refresh hits
 HF. For pure UI work you can iterate against the cached state without network.
 
+### Previewing UI changes against the live board
+
+The Space's history has diverged from the local `arena/` checkout, and `git fetch` on the
+Space fails ("expected 'acknowledgments'"). For UI work use **`arena-live/`**: a
+`snapshot_download` of the Space plus its own `.venv` (the Space's exact
+`requirements.txt`):
+
+```bash
+cd ~/speech-spoof-bench/arena-live
+./dev_local.sh            # pulls the live cache.json, serves http://127.0.0.1:7860
+./dev_local.sh --offline  # reuse the local cache.json
+```
+
+It never ingests, never writes to HF, and never expires its data (restart to refresh). If
+`../arena-manifest/provenance.yaml` exists it is used for the n/a\* marks. After a restart,
+open a **fresh** browser tab — an old tab keeps a dead Gradio session and spins forever.
+Deploy by uploading the changed files to the Space with `HfApi().upload_file/upload_folder`.
+
 ## Module responsibilities (where to make a change)
 
 | You want to change... | Edit |

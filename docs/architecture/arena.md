@@ -27,6 +27,7 @@ an exact commit in `requirements.txt` (currently `…@bde5949…`). The Arena co
 | `schema.py` | Frozen dataclasses: `Row`, `Warning`, `ArenaState`. |
 | `events.py` | Build the activity feed from rows + the manifest CHANGELOG. |
 | `changelog.py` | Fetch the optional `CHANGELOG.yaml` from `arena-manifest`. |
+| `provenance.py`, `contamination.py` | "Trained on" (n/a\*) cells from the optional `provenance.yaml` — see [provenance.md](provenance.md). |
 | `cache_store.py` | Serialise `ArenaState` to `cache.json` and commit it back to the Space. |
 | `docs_fetch.py` | Fetch the submit guides from the package repo at the pinned SHA. |
 | `badges.py`, `webhook.py` | The two FastAPI routers (documented in badges.md / cicd.md). |
